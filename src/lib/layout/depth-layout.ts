@@ -4,6 +4,7 @@
 
 import { EventNode, NodePosition, LayoutConfig } from '@/types/tree';
 import { Node, Edge } from 'reactflow';
+import { getEdgeWidth, getEdgeColor } from '../d3/color-scales';
 
 export function calculateTreeLayout(
   root: EventNode,
@@ -36,11 +37,15 @@ export function calculateTreeLayout(
         depth: eventNode.depth,
         justification: eventNode.justification,
         sources: eventNode.sources,
+        processingStatus: eventNode.processingStatus,
       },
     });
 
-    // Create edge to parent
+    // Create edge to parent with D3-enhanced styling
     if (eventNode.parentId) {
+      const edgeWidth = getEdgeWidth(eventNode.probability);
+      const edgeColor = getEdgeColor(eventNode.probability, eventNode.sentiment);
+
       edges.push({
         id: `${eventNode.parentId}-${pos.id}`,
         source: eventNode.parentId,
@@ -48,11 +53,12 @@ export function calculateTreeLayout(
         type: 'probability',
         data: {
           probability: eventNode.probability,
+          sentiment: eventNode.sentiment,
         },
         animated: false,
         style: {
-          strokeWidth: Math.max(1, eventNode.probability * 5),
-          stroke: getProbabilityColor(eventNode.probability),
+          strokeWidth: edgeWidth,
+          stroke: edgeColor,
         },
       });
     }
@@ -158,6 +164,7 @@ function findNodeById(root: EventNode, id: string): EventNode | null {
   return null;
 }
 
+// Legacy color functions (kept for backwards compatibility)
 function getProbabilityColor(probability: number): string {
   // Green for high probability, yellow for medium, red for low
   if (probability > 0.5) return '#22c55e'; // green-500
@@ -165,14 +172,9 @@ function getProbabilityColor(probability: number): string {
   return '#ef4444'; // red-500
 }
 
-export function getSentimentColor(sentiment: number): string {
-  // -100 to 100 → red to green
-  if (sentiment > 50) return '#22c55e'; // green-500
-  if (sentiment > 10) return '#84cc16'; // lime-500
-  if (sentiment > -10) return '#eab308'; // yellow-500
-  if (sentiment > -50) return '#f97316'; // orange-500
-  return '#ef4444'; // red-500
-}
+// Note: getSentimentColor now imported from d3/color-scales.ts
+// Keeping this export for backwards compatibility
+export { getSentimentColor } from '../d3/color-scales';
 
 // Find most probable path from root to leaf
 export function findMostProbablePath(root: EventNode): EventNode[] {

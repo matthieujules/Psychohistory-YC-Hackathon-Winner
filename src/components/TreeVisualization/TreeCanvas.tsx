@@ -10,11 +10,13 @@ import ReactFlow, {
   Panel,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+import * as d3 from 'd3';
 
 import { EventNode } from '@/types/tree';
 import { calculateTreeLayout } from '@/lib/layout/depth-layout';
 import EventNodeComponent from './NodeTypes/EventNode';
 import SeedNodeComponent from './NodeTypes/SeedNode';
+import ProbabilityEdge from './EdgeTypes/ProbabilityEdge';
 import NodeDetailsPanel from './NodeDetailsPanel';
 
 interface Props {
@@ -24,6 +26,10 @@ interface Props {
 const nodeTypes = {
   event: EventNodeComponent,
   seed: SeedNodeComponent,
+};
+
+const edgeTypes = {
+  probability: ProbabilityEdge,
 };
 
 export default function TreeVisualization({ tree }: Props) {
@@ -77,6 +83,7 @@ export default function TreeVisualization({ tree }: Props) {
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         fitView
         minZoom={0.1}
         maxZoom={2}
@@ -86,10 +93,8 @@ export default function TreeVisualization({ tree }: Props) {
         <MiniMap
           nodeColor={node => {
             const sentiment = node.data?.sentiment || 0;
-            if (sentiment > 50) return '#22c55e';
-            if (sentiment > 0) return '#84cc16';
-            if (sentiment > -50) return '#f97316';
-            return '#ef4444';
+            // Use D3 color scale for minimap
+            return d3.interpolateRdYlGn((sentiment + 100) / 200);
           }}
         />
 
