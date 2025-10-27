@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, useEffect } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -30,7 +30,7 @@ export default function TreeVisualization({ tree }: Props) {
   const [selectedNode, setSelectedNode] = useState<EventNode | null>(null);
   const [orientation, setOrientation] = useState<'vertical' | 'horizontal'>('vertical');
 
-  // Calculate layout
+  // Calculate layout (recalculates whenever tree changes)
   const { nodes: initialNodes, edges: initialEdges } = useMemo(
     () =>
       calculateTreeLayout(tree, {
@@ -43,6 +43,18 @@ export default function TreeVisualization({ tree }: Props) {
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  // Update nodes/edges when tree changes
+  useEffect(() => {
+    const { nodes: newNodes, edges: newEdges } = calculateTreeLayout(tree, {
+      depthSpacing: 300,
+      childSpacing: 200,
+      orientation,
+    });
+
+    setNodes(newNodes);
+    setEdges(newEdges);
+  }, [tree, orientation, setNodes, setEdges]);
 
   const onNodeClick = useCallback(
     (_: any, node: any) => {

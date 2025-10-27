@@ -80,3 +80,16 @@ export interface TreeMetrics {
   sentimentByDepth: number[];
   entropy: number; // Measure of uncertainty
 }
+
+// Server-Sent Events types for streaming
+export type TreeStreamEvent =
+  | { type: 'tree_started'; data: { seed: EventNode } }
+  | { type: 'node_processing'; data: { nodeId: string; depth: number; event: string } }
+  | { type: 'node_completed'; data: { node: EventNode; children: EventNode[] } }
+  | { type: 'depth_completed'; data: { depth: number; nodesProcessed: number } }
+  | { type: 'tree_completed'; data: { totalNodes: number; duration: number } }
+  | { type: 'error'; data: { message: string; nodeId?: string } };
+
+export interface StreamingTreeBuilder {
+  buildTree: (seed: SeedInput, onEvent: (event: TreeStreamEvent) => void) => Promise<EventNode>;
+}

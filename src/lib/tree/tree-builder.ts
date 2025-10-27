@@ -1,15 +1,17 @@
 /**
- * Core tree generation engine
+ * Core tree generation engine with streaming support
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { EventNode, SeedInput, TreeState } from '@/types/tree';
+import { EventNode, SeedInput, TreeState, TreeStreamEvent } from '@/types/tree';
 import { processNode } from './node-processor';
 
 export class TreeBuilder {
   private state: TreeState;
   private maxConcurrent: number;
   private maxDepth: number;
+  private onEvent?: (event: TreeStreamEvent) => void;
+  private startTime: number = 0;
 
   constructor(maxDepth = 5, maxConcurrent = 20) {
     this.maxDepth = maxDepth;
@@ -26,7 +28,9 @@ export class TreeBuilder {
     };
   }
 
-  async buildTree(seed: SeedInput): Promise<EventNode> {
+  async buildTree(seed: SeedInput, onEvent?: (event: TreeStreamEvent) => void): Promise<EventNode> {
+    this.onEvent = onEvent;
+    this.startTime = Date.now();
     // Create root node
     const root: EventNode = {
       id: uuidv4(),
@@ -48,11 +52,35 @@ export class TreeBuilder {
     this.state.totalNodes = 1;
     this.state.isGenerating = true;
 
+    // Emit tree started event
+    this.emit({ type: 'tree_started', data: { seed: root } });
+
     // Expand tree level by level
-    await this.expandTree(seed);
+    try {
+      await this.expandTree(seed);
+
+      // Emit tree completed event
+      const duration = Date.now() - this.startTime;
+      this.emit({
+        type: 'tree_completed',
+        data: { totalNodes: this.state.totalNodes, duration }
+      });
+    } catch (error) {
+      this.emit({
+        type: 'error',
+        data: { message: error instanceof Error ? error.message : 'Unknown error' }
+      });
+      throw error;
+    }
 
     this.state.isGenerating = false;
     return root;
+  }
+
+  private emit(event: TreeStreamEvent): void {
+    if (this.onEvent) {
+      this.onEvent(event);
+    }
   }
 
   private async expandTree(seed: SeedInput): Promise<void> {
@@ -84,6 +112,12 @@ export class TreeBuilder {
             if (!node) return;
 
             try {
+              // Emit node processing event
+              this.emit({
+                type: 'node_processing',
+                data: { nodeId: node.id, depth: node.depth, event: node.event }
+              });
+
               // Process node to generate children
               const children = await processNode(node, seed);
 
@@ -105,16 +139,37 @@ export class TreeBuilder {
               );
               this.state.completedNodes.add(nodeId);
 
+              // Emit node completed event with children
+              this.emit({
+                type: 'node_completed',
+                data: { node, children }
+              });
+
               console.log(
                 `Completed node at depth ${node.depth}: ${node.event.substring(0, 50)}...`
               );
             } catch (error) {
               console.error(`Failed to process node ${nodeId}:`, error);
               node.processingStatus = 'failed';
+
+              // Emit error event
+              this.emit({
+                type: 'error',
+                data: {
+                  message: error instanceof Error ? error.message : 'Node processing failed',
+                  nodeId: node.id
+                }
+              });
             }
           })
         );
       }
+
+      // Emit depth completed event
+      this.emit({
+        type: 'depth_completed',
+        data: { depth: currentDepth, nodesProcessed: nodesAtDepth.length }
+      });
 
       currentDepth++;
     }

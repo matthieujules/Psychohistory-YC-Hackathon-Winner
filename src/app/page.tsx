@@ -1,43 +1,24 @@
 'use client';
 
-import { useState } from 'react';
 import { SeedInput } from '@/types/tree';
 import SeedInputForm from '@/components/SeedInput/SeedForm';
 import TreeVisualization from '@/components/TreeVisualization/TreeCanvas';
-import { EventNode } from '@/types/tree';
+import { useTreeGeneration } from '@/hooks/useTreeGeneration';
 
 export default function Home() {
-  const [tree, setTree] = useState<EventNode | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    generateTree,
+    cancelGeneration,
+    isGenerating,
+    root,
+    currentDepth,
+    totalNodes,
+    completedNodes,
+    error,
+  } = useTreeGeneration();
 
   const handleGenerateTree = async (seed: SeedInput) => {
-    setIsGenerating(true);
-    setError(null);
-    setTree(null);
-
-    try {
-      const response = await fetch('/api/generate-tree', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(seed),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to generate tree');
-      }
-
-      const data = await response.json();
-      setTree(data.tree);
-    } catch (err) {
-      console.error('Tree generation failed:', err);
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    } finally {
-      setIsGenerating(false);
-    }
+    await generateTree(seed);
   };
 
   return (
@@ -75,24 +56,42 @@ export default function Home() {
         {/* Visualization */}
         <div className="flex-1 bg-gray-100">
           {isGenerating && (
-            <div className="flex h-full items-center justify-center">
-              <div className="text-center">
-                <div className="mb-4 inline-block h-12 w-12 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600" />
-                <p className="text-gray-600">Generating probability tree...</p>
+            <div className="absolute left-1/2 top-20 z-10 -translate-x-1/2 transform">
+              <div className="rounded-lg border border-blue-200 bg-white px-6 py-4 shadow-lg">
+                <div className="flex items-center space-x-4">
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600" />
+                  <div className="text-sm">
+                    <p className="font-semibold text-gray-900">
+                      Generating tree...
+                    </p>
+                    <p className="text-gray-600">
+                      Depth {currentDepth} • {completedNodes}/{totalNodes} nodes
+                    </p>
+                  </div>
+                  <button
+                    onClick={cancelGeneration}
+                    className="rounded-md bg-red-50 px-3 py-1 text-sm font-medium text-red-700 hover:bg-red-100"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             </div>
           )}
 
-          {!isGenerating && tree && (
-            <TreeVisualization tree={tree} />
+          {root && (
+            <TreeVisualization tree={root} />
           )}
 
-          {!isGenerating && !tree && !error && (
+          {!isGenerating && !root && !error && (
             <div className="flex h-full items-center justify-center">
               <div className="text-center text-gray-500">
                 <p className="text-lg">Enter a seed event to begin</p>
                 <p className="mt-2 text-sm">
                   The system will generate a probability tree of possible outcomes
+                </p>
+                <p className="mt-1 text-xs text-gray-400">
+                  Watch as nodes appear in real-time!
                 </p>
               </div>
             </div>
