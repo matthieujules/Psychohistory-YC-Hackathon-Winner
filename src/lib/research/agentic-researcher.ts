@@ -5,6 +5,7 @@
 import { Source } from '@/types/tree';
 import { agenticLLM } from '../llm/llm-client';
 import { defaultSearchEngine } from './search-engine';
+import { nodeDebugLogger } from '../logging/node-debug-logger';
 
 // Tool definitions for OpenRouter/OpenAI format
 const RESEARCH_TOOLS = [
@@ -102,7 +103,11 @@ When you have sufficient high-quality sources, call finish_research().`,
       }
 
       iteration++;
-      console.log(`[Agentic Research] Iteration ${iteration}/${MAX_ITERATIONS}`);
+      const iterationStartTime = Date.now();
+
+      if (!nodeDebugLogger.isEnabled()) {
+        console.log(`[Agentic Research] Iteration ${iteration}/${MAX_ITERATIONS}`);
+      }
 
       // Call LLM with tools
       const response = await agenticLLM.completeWithTools(messages, RESEARCH_TOOLS, 'auto');
@@ -122,12 +127,18 @@ When you have sufficient high-quality sources, call finish_research().`,
         break;
       }
 
+      // Track tool executions for debug logging
+      const toolExecutions: any[] = [];
+
       // Execute tool calls
       for (const toolCall of assistantMessage.tool_calls) {
         const toolName = toolCall.function.name;
         const toolArgs = JSON.parse(toolCall.function.arguments);
+        const toolStartTime = Date.now();
 
-        console.log(`[Agentic Research] Tool: ${toolName}`, toolArgs);
+        if (!nodeDebugLogger.isEnabled()) {
+          console.log(`[Agentic Research] Tool: ${toolName}`, toolArgs);
+        }
 
         if (toolName === 'finish_research') {
           // Explicit termination
@@ -175,20 +186,44 @@ When you have sufficient high-quality sources, call finish_research().`,
           allSources.push(...newSources);
 
           // Return results to LLM
+          const toolResult = {
+            query,
+            sources: newSources.map(s => ({
+              title: s.title,
+              snippet: s.snippet,
+              url: s.url,
+            })),
+            total_sources_gathered: allSources.length,
+          };
+
           messages.push({
             role: 'tool',
             tool_call_id: toolCall.id,
-            content: JSON.stringify({
-              query,
-              sources: newSources.map(s => ({
-                title: s.title,
-                snippet: s.snippet,
-                url: s.url,
-              })),
-              total_sources_gathered: allSources.length,
-            }),
+            content: JSON.stringify(toolResult),
+          });
+
+          // Track for debug logging
+          toolExecutions.push({
+            tool_name: 'search',
+            arguments: toolArgs,
+            result: toolResult,
+            duration_ms: Date.now() - toolStartTime,
           });
         }
+      }
+
+      // Log iteration details
+      if (nodeDebugLogger.isEnabled()) {
+        nodeDebugLogger.logIteration({
+          iteration,
+          timestamp: new Date().toISOString(),
+          llm_response: {
+            tool_calls: assistantMessage.tool_calls,
+            content: assistantMessage.content,
+          },
+          tool_executions: toolExecutions,
+          duration_ms: Date.now() - iterationStartTime,
+        });
       }
 
       // Safety: If we have enough sources and iterations, break

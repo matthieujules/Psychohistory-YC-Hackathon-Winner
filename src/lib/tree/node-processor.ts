@@ -7,28 +7,50 @@ import { v4 as uuidv4 } from 'uuid';
 import { EventNode, SeedInput } from '@/types/tree';
 import { analyzeProbabilities } from '../llm/probability-analyzer';
 import { conductAgenticResearch } from '../research/agentic-researcher';
+import { nodeDebugLogger } from '../logging/node-debug-logger';
 
 export async function processNode(
   node: EventNode,
   seed: SeedInput
 ): Promise<EventNode[]> {
-  console.log(`Processing node: ${node.event.substring(0, 60)}...`);
+  // Start debug logging if enabled
+  if (nodeDebugLogger.isEnabled()) {
+    nodeDebugLogger.startNode(node.id, node.event, node.depth);
+  } else {
+    console.log(`Processing node: ${node.event.substring(0, 60)}...`);
+  }
 
   node.processingStatus = 'processing';
 
   try {
     // Phase 1: Agentic Research (DeepSeek V3.1 with tool calling)
-    console.log('[Phase 1] Starting agentic research with V3.1...');
+    const phase1Start = Date.now();
+
+    if (nodeDebugLogger.isEnabled()) {
+      nodeDebugLogger.startPhase1('deepseek/deepseek-chat', node.event);
+    } else {
+      console.log('[Phase 1] Starting agentic research with V3.1...');
+    }
+
     const researchResult = await conductAgenticResearch(
       node.event,
       seed.context,
       node.depth
     );
 
-    console.log(
-      `[Phase 1] Research complete: ${researchResult.sources.length} sources, ` +
-      `${researchResult.iterations} iterations, confidence: ${researchResult.confidence}`
-    );
+    if (nodeDebugLogger.isEnabled()) {
+      nodeDebugLogger.endPhase1(
+        researchResult.sources.length,
+        researchResult.summary,
+        researchResult.confidence,
+        Date.now() - phase1Start
+      );
+    } else {
+      console.log(
+        `[Phase 1] Research complete: ${researchResult.sources.length} sources, ` +
+        `${researchResult.iterations} iterations, confidence: ${researchResult.confidence}`
+      );
+    }
 
     if (researchResult.sources.length === 0) {
       console.warn('[Phase 1] No research results found, generating fallback outcomes');
@@ -39,7 +61,14 @@ export async function processNode(
     const researchText = formatResearchForR1(researchResult);
 
     // Phase 2: Probability Synthesis (DeepSeek R1 reasoning)
-    console.log('[Phase 2] Synthesizing probabilities with R1...');
+    const phase2Start = Date.now();
+
+    if (nodeDebugLogger.isEnabled()) {
+      nodeDebugLogger.startPhase2('deepseek/deepseek-r1');
+    } else {
+      console.log('[Phase 2] Synthesizing probabilities with R1...');
+    }
+
     const probabilities = await analyzeProbabilities(
       node.event,
       node.depth,
@@ -47,7 +76,16 @@ export async function processNode(
       seed.timeframe
     );
 
-    console.log(`[Phase 2] Generated ${probabilities.length} probability outcomes`);
+    if (nodeDebugLogger.isEnabled()) {
+      nodeDebugLogger.endPhase2(
+        researchText,
+        probabilities, // Full response
+        probabilities,
+        Date.now() - phase2Start
+      );
+    } else {
+      console.log(`[Phase 2] Generated ${probabilities.length} probability outcomes`);
+    }
 
     // Create child nodes
     const children: EventNode[] = probabilities.map(prob => ({
@@ -66,9 +104,20 @@ export async function processNode(
 
     console.log(`Generated ${children.length} children for node at depth ${node.depth}`);
 
+    // End debug logging
+    if (nodeDebugLogger.isEnabled()) {
+      await nodeDebugLogger.endNode(children.length);
+    }
+
     return children;
   } catch (error) {
     console.error('Node processing failed:', error);
+
+    // End debug logging on error
+    if (nodeDebugLogger.isEnabled()) {
+      await nodeDebugLogger.endNode(0);
+    }
+
     return generateFallbackChildren(node);
   }
 }
