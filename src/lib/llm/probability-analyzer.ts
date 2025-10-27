@@ -3,7 +3,7 @@
  */
 
 import { z } from 'zod';
-import { defaultLLM } from './llm-client';
+import { reasoningLLM } from './llm-client';
 import { PROBABILITY_ANALYSIS_PROMPT } from './prompt-templates';
 import { ProbabilityOutput } from '@/types/tree';
 
@@ -30,7 +30,7 @@ export async function analyzeProbabilities(
   );
 
   try {
-    let outputs = await defaultLLM.completeJSON(prompt, ProbabilityArraySchema);
+    let outputs = await reasoningLLM.completeJSON(prompt, ProbabilityArraySchema);
 
     // Normalize probabilities to sum to exactly 1.0
     outputs = normalizeProbabilities(outputs);

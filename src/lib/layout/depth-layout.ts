@@ -14,7 +14,8 @@ export function calculateTreeLayout(
     childSpacing: 200,
     orientation: 'vertical',
   },
-  mostProbablePath?: ProbablePath
+  mostProbablePath?: ProbablePath,
+  cumulativeProbabilities?: Map<string, number>
 ): { nodes: Node[]; edges: Edge[] } {
   const positions: NodePosition[] = [];
   const nodes: Node[] = [];
@@ -30,13 +31,16 @@ export function calculateTreeLayout(
 
     const isOnPath = mostProbablePath?.pathIds.has(pos.id) || false;
 
+    // Use cumulative probability if provided, otherwise use conditional probability
+    const displayProbability = cumulativeProbabilities?.get(pos.id) ?? eventNode.probability;
+
     nodes.push({
       id: pos.id,
       type: eventNode.depth === 0 ? 'seed' : 'event',
       position: { x: pos.x, y: pos.y },
       data: {
         event: eventNode.event,
-        probability: eventNode.probability,
+        probability: displayProbability,
         sentiment: eventNode.sentiment,
         depth: eventNode.depth,
         justification: eventNode.justification,

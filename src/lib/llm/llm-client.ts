@@ -114,3 +114,11 @@ export const fastLLM = new LLMClient({
   model: 'openai/gpt-4o-mini',
   temperature: 0.5,
 });
+
+// DeepSeek R1 - Reasoning model for probability analysis
+export const reasoningLLM = new LLMClient({
+  provider: 'openrouter',
+  model: 'deepseek/deepseek-r1',
+  temperature: 0.6,
+  maxTokens: 8000,
+});

@@ -8,7 +8,7 @@ You are an expert researcher tasked with finding historical precedents and acade
 Event: ${event}
 ${context ? `Additional Context: ${context}` : ''}
 
-Generate 3-5 search queries to find:
+Generate EXACTLY 3-5 search queries (MAXIMUM 5, NO MORE) to find:
 1. Historical precedents (similar policies, events, or decisions)
 2. Academic research on outcomes and effects
 3. Expert analysis and predictions
@@ -17,8 +17,10 @@ Generate 3-5 search queries to find:
 
 Make queries specific and diverse. Include both positive and negative case studies.
 
-Output ONLY a JSON array of strings:
-["query 1", "query 2", "query 3", ...]
+CRITICAL: You MUST return between 3 and 5 queries. NO MORE than 5 queries.
+
+Output ONLY a JSON array of strings with 3-5 elements:
+["query 1", "query 2", "query 3"]
 `;
 
 export const PROBABILITY_ANALYSIS_PROMPT = (

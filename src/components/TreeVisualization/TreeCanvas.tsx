@@ -15,6 +15,7 @@ import * as d3 from 'd3';
 import { EventNode } from '@/types/tree';
 import { calculateTreeLayout } from '@/lib/layout/depth-layout';
 import { findMostProbablePath } from '@/lib/tree/path-finder';
+import { calculateCumulativeProbabilities, verifyProbabilitySum } from '@/lib/tree/probability-calculator';
 import EventNodeComponent from './NodeTypes/EventNode';
 import SeedNodeComponent from './NodeTypes/SeedNode';
 import ProbabilityEdge from './EdgeTypes/ProbabilityEdge';
@@ -40,6 +41,12 @@ export default function TreeVisualization({ tree }: Props) {
   // Find most probable path
   const mostProbablePath = useMemo(() => findMostProbablePath(tree), [tree]);
 
+  // Calculate cumulative probabilities
+  const cumulativeProbabilities = useMemo(() => calculateCumulativeProbabilities(tree), [tree]);
+
+  // Verify probability sum
+  const probabilitySum = useMemo(() => verifyProbabilitySum(tree), [tree]);
+
   // Calculate layout (recalculates whenever tree changes)
   const { nodes: initialNodes, edges: initialEdges } = useMemo(
     () =>
@@ -47,8 +54,8 @@ export default function TreeVisualization({ tree }: Props) {
         depthSpacing: 300,
         childSpacing: 200,
         orientation,
-      }, mostProbablePath),
-    [tree, orientation, mostProbablePath]
+      }, mostProbablePath, cumulativeProbabilities),
+    [tree, orientation, mostProbablePath, cumulativeProbabilities]
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -60,11 +67,11 @@ export default function TreeVisualization({ tree }: Props) {
       depthSpacing: 300,
       childSpacing: 200,
       orientation,
-    }, mostProbablePath);
+    }, mostProbablePath, cumulativeProbabilities);
 
     setNodes(newNodes);
     setEdges(newEdges);
-  }, [tree, orientation, mostProbablePath, setNodes, setEdges]);
+  }, [tree, orientation, mostProbablePath, cumulativeProbabilities, setNodes, setEdges]);
 
   const onNodeClick = useCallback(
     (_: any, node: any) => {
@@ -102,13 +109,24 @@ export default function TreeVisualization({ tree }: Props) {
           }}
         />
 
-        <Panel position="top-right" className="space-x-2">
+        <Panel position="top-right" className="flex flex-col gap-2">
           <button
             onClick={toggleOrientation}
             className="rounded-md bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-md hover:bg-gray-50"
           >
             {orientation === 'vertical' ? 'Vertical' : 'Horizontal'}
           </button>
+
+          {/* Probability verification panel */}
+          <div className={`rounded-md px-3 py-2 text-xs font-medium shadow-md ${
+            probabilitySum.isValid
+              ? 'bg-green-50 text-green-800 border border-green-200'
+              : 'bg-yellow-50 text-yellow-800 border border-yellow-200'
+          }`}>
+            <div className="font-bold">Leaf Sum</div>
+            <div>{(probabilitySum.sum * 100).toFixed(2)}%</div>
+            {probabilitySum.isValid && <div className="text-green-600">✓ Valid</div>}
+          </div>
         </Panel>
       </ReactFlow>
 

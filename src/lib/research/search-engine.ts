@@ -8,19 +8,60 @@ export interface SearchConfig {
   provider: 'exa' | 'tavily' | 'mock';
   apiKey?: string;
   maxResults?: number;
+  rateLimitPerMinute?: number;
+}
+
+// Simple rate limiter
+class RateLimiter {
+  private queue: number[] = [];
+  private limit: number;
+  private windowMs: number;
+
+  constructor(limit: number, windowMs: number = 60000) {
+    this.limit = limit;
+    this.windowMs = windowMs;
+  }
+
+  async acquire(): Promise<void> {
+    const now = Date.now();
+
+    // Remove old timestamps outside the window
+    this.queue = this.queue.filter(timestamp => now - timestamp < this.windowMs);
+
+    // If we've hit the limit, wait
+    if (this.queue.length >= this.limit) {
+      const oldestRequest = this.queue[0];
+      const waitTime = this.windowMs - (now - oldestRequest) + 100; // Add 100ms buffer
+      console.log(`Rate limit reached, waiting ${waitTime}ms...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      return this.acquire(); // Recursive retry
+    }
+
+    // Record this request
+    this.queue.push(now);
+  }
 }
 
 export class SearchEngine {
   private config: SearchConfig;
+  private rateLimiter: RateLimiter;
 
   constructor(config: SearchConfig) {
     this.config = config;
+    // Exa allows 5 queries per second = 300/minute, use conservative 60/minute
+    const rateLimitPerMinute = config.rateLimitPerMinute || 60;
+    this.rateLimiter = new RateLimiter(rateLimitPerMinute);
   }
 
   async search(query: string): Promise<Source[]> {
     const { provider, maxResults = 5 } = this.config;
 
     try {
+      // Apply rate limiting for external API calls
+      if (provider === 'exa' || provider === 'tavily') {
+        await this.rateLimiter.acquire();
+      }
+
       if (provider === 'exa') {
         return await this.searchExa(query, maxResults);
       } else if (provider === 'tavily') {
@@ -111,6 +152,7 @@ export const defaultSearchEngine = new SearchEngine({
   provider: (process.env.SEARCH_PROVIDER as any) || 'mock',
   apiKey: process.env.EXA_API_KEY || process.env.TAVILY_API_KEY,
   maxResults: 5,
+  rateLimitPerMinute: 60, // Exa: 5 QPS = 300/min, conservative 60/min
 });
 
 export async function performBatchSearch(queries: string[]): Promise<ResearchResult[]> {
