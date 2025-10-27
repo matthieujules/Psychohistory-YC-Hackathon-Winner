@@ -29,36 +29,23 @@ export const PROBABILITY_ANALYSIS_PROMPT = (
   research: string,
   timeframe?: string
 ) => `
-You are a probabilistic forecasting expert analyzing possible future events.
-
-Parent Event: ${parentEvent}
-Current Depth: ${depth}/5
+Event: ${parentEvent}
+Depth: ${depth}/5
 Timeframe: ${timeframe || 'Next significant development'}
 
-Research Findings:
+Research:
 ${research}
 
-Based ONLY on the research provided and historical patterns, predict up to 5 possible events that could occur next.
+Predict 1-5 possible next events based on the research.
 
 Requirements:
-1. Events should be specific, measurable outcomes
-2. Probabilities MUST sum to exactly 1.0
-3. Each event needs justification citing the research
-4. Sentiment: -100 (very negative) to 100 (very positive)
-5. Be realistic - include negative outcomes if research suggests them
-6. Consider second-order effects
+- Probabilities sum to 1.0
+- Justify using research evidence
+- Sentiment: -100 to 100
+- Specific, measurable outcomes
 
-Output ONLY valid JSON (no markdown):
-[
-  {
-    "event": "Specific description of what happens",
-    "probability": 0.35,
-    "justification": "Based on research showing...",
-    "sentiment": -25
-  }
-]
-
-Probabilities must sum to 1.0. If uncertain, distribute probability more evenly.
+Output JSON only:
+[{"event": "...", "probability": 0.3, "justification": "...", "sentiment": 0}]
 `;
 
 export const TIMEFRAME_PROMPT = (event: string, depth: number) => `

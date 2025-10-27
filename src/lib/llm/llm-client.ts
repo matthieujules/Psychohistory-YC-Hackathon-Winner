@@ -100,6 +100,37 @@ export class LLMClient {
 
     throw lastError;
   }
+
+  /**
+   * Complete with tool calling support (for agentic workflows)
+   */
+  async completeWithTools(
+    messages: any[],
+    tools: any[],
+    toolChoice: 'auto' | 'required' | 'none' = 'auto'
+  ): Promise<any> {
+    const { provider, model, temperature = 0.6, maxTokens = 8000 } = this.config;
+
+    try {
+      if ((provider === 'openai' || provider === 'openrouter') && this.openai) {
+        const response = await this.openai.chat.completions.create({
+          model,
+          messages,
+          tools,
+          tool_choice: toolChoice,
+          temperature,
+          max_tokens: maxTokens,
+        });
+
+        return response;
+      }
+
+      throw new Error(`Provider ${provider} does not support tool calling`);
+    } catch (error) {
+      console.error('LLM tool calling error:', error);
+      throw error;
+    }
+  }
 }
 
 // Default instances
@@ -115,7 +146,15 @@ export const fastLLM = new LLMClient({
   temperature: 0.5,
 });
 
-// DeepSeek R1 - Reasoning model for probability analysis
+// DeepSeek V3.1 - Agentic model for research with tool calling
+export const agenticLLM = new LLMClient({
+  provider: 'openrouter',
+  model: 'deepseek/deepseek-chat', // V3.1 with tool calling support
+  temperature: 0.6,
+  maxTokens: 8000,
+});
+
+// DeepSeek R1 - Reasoning model for probability synthesis
 export const reasoningLLM = new LLMClient({
   provider: 'openrouter',
   model: 'deepseek/deepseek-r1',

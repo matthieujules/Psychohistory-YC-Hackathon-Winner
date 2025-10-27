@@ -1,13 +1,12 @@
 /**
  * Process individual nodes: research → probability generation
+ * Uses DeepSeek V3.1 for agentic research, DeepSeek R1 for synthesis
  */
 
 import { v4 as uuidv4 } from 'uuid';
 import { EventNode, SeedInput } from '@/types/tree';
-import { generateSearchQueries } from '../llm/query-generator';
 import { analyzeProbabilities } from '../llm/probability-analyzer';
-import { performBatchSearch } from '../research/search-engine';
-import { aggregateResearch, formatResearchForPrompt } from '../research/research-aggregator';
+import { conductAgenticResearch } from '../research/agentic-researcher';
 
 export async function processNode(
   node: EventNode,
@@ -18,25 +17,29 @@ export async function processNode(
   node.processingStatus = 'processing';
 
   try {
-    // Step 1: Generate search queries
-    const queries = await generateSearchQueries(
+    // Phase 1: Agentic Research (DeepSeek V3.1 with tool calling)
+    console.log('[Phase 1] Starting agentic research with V3.1...');
+    const researchResult = await conductAgenticResearch(
       node.event,
-      seed.context
+      seed.context,
+      node.depth
     );
 
-    // Step 2: Perform research
-    const searchResults = await performBatchSearch(queries);
+    console.log(
+      `[Phase 1] Research complete: ${researchResult.sources.length} sources, ` +
+      `${researchResult.iterations} iterations, confidence: ${researchResult.confidence}`
+    );
 
-    if (searchResults.length === 0) {
-      console.warn('No research results found, generating fallback outcomes');
+    if (researchResult.sources.length === 0) {
+      console.warn('[Phase 1] No research results found, generating fallback outcomes');
       return generateFallbackChildren(node);
     }
 
-    // Step 3: Aggregate research
-    const research = await aggregateResearch(searchResults);
-    const researchText = formatResearchForPrompt(research);
+    // Format research for R1 analysis
+    const researchText = formatResearchForR1(researchResult);
 
-    // Step 4: Generate probabilities
+    // Phase 2: Probability Synthesis (DeepSeek R1 reasoning)
+    console.log('[Phase 2] Synthesizing probabilities with R1...');
     const probabilities = await analyzeProbabilities(
       node.event,
       node.depth,
@@ -44,7 +47,9 @@ export async function processNode(
       seed.timeframe
     );
 
-    // Step 5: Create child nodes
+    console.log(`[Phase 2] Generated ${probabilities.length} probability outcomes`);
+
+    // Create child nodes
     const children: EventNode[] = probabilities.map(prob => ({
       id: uuidv4(),
       event: prob.event,
@@ -52,7 +57,7 @@ export async function processNode(
       justification: prob.justification,
       sentiment: prob.sentiment,
       depth: node.depth + 1,
-      sources: research.results.flatMap(r => r.sources).slice(0, 5),
+      sources: researchResult.sources.slice(0, 5), // Top 5 sources
       children: [],
       parentId: node.id,
       createdAt: new Date(),
@@ -66,6 +71,35 @@ export async function processNode(
     console.error('Node processing failed:', error);
     return generateFallbackChildren(node);
   }
+}
+
+/**
+ * Format agentic research results for DeepSeek R1 synthesis
+ */
+function formatResearchForR1(research: {
+  sources: any[];
+  summary: string;
+  confidence: string;
+  queries: string[];
+}): string {
+  if (research.sources.length === 0) {
+    return 'No research findings available.';
+  }
+
+  const sourcesText = research.sources
+    .map((source, i) => {
+      return `Source ${i + 1}: ${source.title}\nURL: ${source.url}\n${source.snippet}`;
+    })
+    .join('\n\n---\n\n');
+
+  return `Research Summary (${research.confidence} confidence):
+${research.summary}
+
+Queries Executed:
+${research.queries.map((q, i) => `${i + 1}. ${q}`).join('\n')}
+
+Sources:
+${sourcesText}`;
 }
 
 function generateFallbackChildren(node: EventNode): EventNode[] {
