@@ -1,0 +1,116 @@
+/**
+ * Unified LLM client supporting multiple providers
+ */
+
+import OpenAI from 'openai';
+import { z } from 'zod';
+
+export type LLMProvider = 'openai' | 'openrouter' | 'anthropic';
+
+export interface LLMConfig {
+  provider: LLMProvider;
+  model: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+export class LLMClient {
+  private openai?: OpenAI;
+  private config: LLMConfig;
+
+  constructor(config: LLMConfig) {
+    this.config = config;
+
+    if (config.provider === 'openai') {
+      this.openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+      });
+    } else if (config.provider === 'openrouter') {
+      this.openai = new OpenAI({
+        apiKey: process.env.OPENROUTER_API_KEY,
+        baseURL: 'https://openrouter.ai/api/v1',
+        defaultHeaders: {
+          'HTTP-Referer': process.env.SITE_URL || 'http://localhost:3000',
+          'X-Title': 'PsychoHistory',
+        },
+      });
+    }
+  }
+
+  async complete(prompt: string): Promise<string> {
+    const { provider, model, temperature = 0.7, maxTokens = 4000 } = this.config;
+
+    try {
+      if ((provider === 'openai' || provider === 'openrouter') && this.openai) {
+        const response = await this.openai.chat.completions.create({
+          model,
+          messages: [{ role: 'user', content: prompt }],
+          temperature,
+          max_tokens: maxTokens,
+        });
+
+        return response.choices[0]?.message?.content || '';
+      }
+
+      throw new Error(`Provider ${provider} not implemented`);
+    } catch (error) {
+      console.error('LLM completion error:', error);
+      throw error;
+    }
+  }
+
+  async completeJSON<T>(prompt: string, schema: z.ZodSchema<T>): Promise<T> {
+    const response = await this.complete(prompt);
+
+    try {
+      // Try to extract JSON from markdown code blocks if present
+      let jsonStr = response.trim();
+      const jsonMatch = jsonStr.match(/```json\n([\s\S]*?)\n```/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[1];
+      } else if (jsonStr.startsWith('```') && jsonStr.endsWith('```')) {
+        jsonStr = jsonStr.slice(3, -3).trim();
+      }
+
+      const parsed = JSON.parse(jsonStr);
+      return schema.parse(parsed);
+    } catch (error) {
+      console.error('Failed to parse LLM JSON response:', response);
+      throw new Error(`Invalid JSON response: ${error}`);
+    }
+  }
+
+  async completeWithRetry<T>(
+    fn: () => Promise<T>,
+    maxRetries = 3,
+    delay = 1000
+  ): Promise<T> {
+    let lastError: Error | undefined;
+
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error as Error;
+        if (i < maxRetries - 1) {
+          await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
+        }
+      }
+    }
+
+    throw lastError;
+  }
+}
+
+// Default instances
+export const defaultLLM = new LLMClient({
+  provider: 'openrouter',
+  model: 'openai/gpt-4o',
+  temperature: 0.7,
+});
+
+export const fastLLM = new LLMClient({
+  provider: 'openrouter',
+  model: 'openai/gpt-4o-mini',
+  temperature: 0.5,
+});

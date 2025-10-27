@@ -1,0 +1,197 @@
+/**
+ * Depth-aware hierarchical layout algorithm for React Flow
+ */
+
+import { EventNode, NodePosition, LayoutConfig } from '@/types/tree';
+import { Node, Edge } from 'reactflow';
+
+export function calculateTreeLayout(
+  root: EventNode,
+  config: LayoutConfig = {
+    depthSpacing: 300,
+    childSpacing: 200,
+    orientation: 'vertical',
+  }
+): { nodes: Node[]; edges: Edge[] } {
+  const positions: NodePosition[] = [];
+  const nodes: Node[] = [];
+  const edges: Edge[] = [];
+
+  // First pass: calculate positions
+  layoutNode(root, 0, 0, config, positions);
+
+  // Second pass: create React Flow nodes and edges
+  positions.forEach(pos => {
+    const eventNode = findNodeById(root, pos.id);
+    if (!eventNode) return;
+
+    nodes.push({
+      id: pos.id,
+      type: eventNode.depth === 0 ? 'seed' : 'event',
+      position: { x: pos.x, y: pos.y },
+      data: {
+        event: eventNode.event,
+        probability: eventNode.probability,
+        sentiment: eventNode.sentiment,
+        depth: eventNode.depth,
+        justification: eventNode.justification,
+        sources: eventNode.sources,
+      },
+    });
+
+    // Create edge to parent
+    if (eventNode.parentId) {
+      edges.push({
+        id: `${eventNode.parentId}-${pos.id}`,
+        source: eventNode.parentId,
+        target: pos.id,
+        type: 'probability',
+        data: {
+          probability: eventNode.probability,
+        },
+        animated: false,
+        style: {
+          strokeWidth: Math.max(1, eventNode.probability * 5),
+          stroke: getProbabilityColor(eventNode.probability),
+        },
+      });
+    }
+  });
+
+  return { nodes, edges };
+}
+
+function layoutNode(
+  node: EventNode,
+  depth: number,
+  xOffset: number,
+  config: LayoutConfig,
+  positions: NodePosition[]
+): number {
+  const { depthSpacing, childSpacing, orientation } = config;
+
+  if (orientation === 'vertical') {
+    // Vertical layout: depth increases downward (Y-axis)
+    const y = depth * depthSpacing;
+
+    if (node.children.length === 0) {
+      // Leaf node
+      positions.push({ id: node.id, x: xOffset, y });
+      return childSpacing;
+    }
+
+    // Calculate total width needed for children
+    let totalWidth = 0;
+    const childWidths: number[] = [];
+
+    node.children.forEach(child => {
+      const width = layoutNode(
+        child,
+        depth + 1,
+        xOffset + totalWidth,
+        config,
+        positions
+      );
+      childWidths.push(width);
+      totalWidth += width;
+    });
+
+    // Position parent at center of children
+    const firstChildPos = positions.find(p => p.id === node.children[0].id);
+    const lastChildPos = positions.find(
+      p => p.id === node.children[node.children.length - 1].id
+    );
+
+    if (firstChildPos && lastChildPos) {
+      const centerX = (firstChildPos.x + lastChildPos.x) / 2;
+      positions.push({ id: node.id, x: centerX, y });
+    } else {
+      positions.push({ id: node.id, x: xOffset + totalWidth / 2, y });
+    }
+
+    return totalWidth;
+  } else {
+    // Horizontal layout: depth increases rightward (X-axis)
+    const x = depth * depthSpacing;
+
+    if (node.children.length === 0) {
+      positions.push({ id: node.id, x, y: xOffset });
+      return childSpacing;
+    }
+
+    let totalHeight = 0;
+    node.children.forEach(child => {
+      const height = layoutNode(
+        child,
+        depth + 1,
+        xOffset + totalHeight,
+        config,
+        positions
+      );
+      totalHeight += height;
+    });
+
+    const firstChildPos = positions.find(p => p.id === node.children[0].id);
+    const lastChildPos = positions.find(
+      p => p.id === node.children[node.children.length - 1].id
+    );
+
+    if (firstChildPos && lastChildPos) {
+      const centerY = (firstChildPos.y + lastChildPos.y) / 2;
+      positions.push({ id: node.id, x, y: centerY });
+    } else {
+      positions.push({ id: node.id, x, y: xOffset + totalHeight / 2 });
+    }
+
+    return totalHeight;
+  }
+}
+
+function findNodeById(root: EventNode, id: string): EventNode | null {
+  if (root.id === id) return root;
+
+  for (const child of root.children) {
+    const found = findNodeById(child, id);
+    if (found) return found;
+  }
+
+  return null;
+}
+
+function getProbabilityColor(probability: number): string {
+  // Green for high probability, yellow for medium, red for low
+  if (probability > 0.5) return '#22c55e'; // green-500
+  if (probability > 0.2) return '#eab308'; // yellow-500
+  return '#ef4444'; // red-500
+}
+
+export function getSentimentColor(sentiment: number): string {
+  // -100 to 100 → red to green
+  if (sentiment > 50) return '#22c55e'; // green-500
+  if (sentiment > 10) return '#84cc16'; // lime-500
+  if (sentiment > -10) return '#eab308'; // yellow-500
+  if (sentiment > -50) return '#f97316'; // orange-500
+  return '#ef4444'; // red-500
+}
+
+// Find most probable path from root to leaf
+export function findMostProbablePath(root: EventNode): EventNode[] {
+  const path: EventNode[] = [root];
+  let current = root;
+
+  while (current.children.length > 0) {
+    // Find child with highest probability
+    const maxChild = current.children.reduce((max, child) =>
+      child.probability > max.probability ? child : max
+    );
+    path.push(maxChild);
+    current = maxChild;
+  }
+
+  return path;
+}
+
+// Calculate cumulative probability along a path
+export function calculatePathProbability(path: EventNode[]): number {
+  return path.reduce((acc, node) => acc * node.probability, 1.0);
+}
