@@ -15,10 +15,11 @@ interface EventNodeData {
   sentiment: number;
   depth: number;
   processingStatus?: 'pending' | 'processing' | 'completed' | 'failed';
+  isOnMostProbablePath?: boolean;
 }
 
 function EventNode({ data }: { data: EventNodeData }) {
-  const { event, probability, sentiment, depth, processingStatus = 'completed' } = data;
+  const { event, probability, sentiment, depth, processingStatus = 'completed', isOnMostProbablePath = false } = data;
 
   const sentimentColor = getSentimentColor(sentiment);
   const sentimentGradient = getSentimentGradient(sentiment);
@@ -29,13 +30,25 @@ function EventNode({ data }: { data: EventNodeData }) {
   // Calculate opacity based on probability (higher prob = more opaque)
   const bgOpacity = 0.85 + (probability * 0.15);
 
-  return (
-    <div
-      className="rounded-lg border-2 p-3 transition-all hover:scale-105"
-      style={{
-        background: sentimentGradient,
+  // Special styling for most probable path
+  const pathBorderStyle = isOnMostProbablePath
+    ? {
+        borderWidth: '4px',
+        borderColor: '#fbbf24', // amber-400
+        boxShadow: `${probabilityGlow}, 0 0 20px rgba(251, 191, 36, 0.6), inset 0 0 20px rgba(251, 191, 36, 0.1)`,
+      }
+    : {
+        borderWidth: '2px',
         borderColor,
         boxShadow: probabilityGlow,
+      };
+
+  return (
+    <div
+      className="rounded-lg p-3 transition-all hover:scale-105"
+      style={{
+        background: sentimentGradient,
+        ...pathBorderStyle,
         minWidth: 200,
         maxWidth: 250,
         opacity: bgOpacity,

@@ -7,6 +7,7 @@ import { getEdgeWidth, getEdgeColor, getSentimentColor } from '@/lib/d3/color-sc
 interface ProbabilityEdgeData {
   probability: number;
   sentiment?: number;
+  isOnMostProbablePath?: boolean;
 }
 
 function ProbabilityEdge({
@@ -22,6 +23,7 @@ function ProbabilityEdge({
 }: EdgeProps<ProbabilityEdgeData>) {
   const probability = data?.probability || 0.5;
   const sentiment = data?.sentiment || 0;
+  const isOnPath = data?.isOnMostProbablePath || false;
 
   const [edgePath] = getBezierPath({
     sourceX,
@@ -33,12 +35,16 @@ function ProbabilityEdge({
   });
 
   const strokeWidth = getEdgeWidth(probability);
-  const color = getEdgeColor(probability, sentiment);
+  const baseColor = getEdgeColor(probability, sentiment);
   const sentimentColor = getSentimentColor(sentiment);
 
+  // Most probable path gets golden color
+  const color = isOnPath ? '#fbbf24' : baseColor;
+  const glowColor = isOnPath ? '#fbbf24' : sentimentColor;
+
   // High probability edges get a glow effect
-  const shouldGlow = probability > 0.5;
-  const glowIntensity = probability > 0.7 ? 'strong' : probability > 0.5 ? 'medium' : 'none';
+  const shouldGlow = probability > 0.5 || isOnPath;
+  const glowIntensity = isOnPath ? 'path' : probability > 0.7 ? 'strong' : probability > 0.5 ? 'medium' : 'none';
 
   return (
     <g className="react-flow__edge">
@@ -48,17 +54,17 @@ function ProbabilityEdge({
           <path
             d={edgePath}
             fill="none"
-            stroke={sentimentColor}
-            strokeWidth={strokeWidth + 8}
-            strokeOpacity={probability * 0.15}
+            stroke={glowColor}
+            strokeWidth={strokeWidth + (isOnPath ? 12 : 8)}
+            strokeOpacity={isOnPath ? 0.3 : probability * 0.15}
             className="transition-all duration-300"
           />
           <path
             d={edgePath}
             fill="none"
-            stroke={sentimentColor}
-            strokeWidth={strokeWidth + 4}
-            strokeOpacity={probability * 0.25}
+            stroke={glowColor}
+            strokeWidth={strokeWidth + (isOnPath ? 6 : 4)}
+            strokeOpacity={isOnPath ? 0.5 : probability * 0.25}
             className="transition-all duration-300"
           />
         </>
@@ -74,8 +80,10 @@ function ProbabilityEdge({
         className="transition-all duration-300"
         markerEnd={markerEnd}
         style={{
-          filter: glowIntensity === 'strong'
-            ? `drop-shadow(0 0 4px ${sentimentColor})`
+          filter: glowIntensity === 'path'
+            ? `drop-shadow(0 0 6px ${glowColor})`
+            : glowIntensity === 'strong'
+            ? `drop-shadow(0 0 4px ${glowColor})`
             : undefined,
         }}
       />

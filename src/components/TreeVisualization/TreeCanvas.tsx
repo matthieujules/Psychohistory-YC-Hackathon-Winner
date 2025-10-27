@@ -14,6 +14,7 @@ import * as d3 from 'd3';
 
 import { EventNode } from '@/types/tree';
 import { calculateTreeLayout } from '@/lib/layout/depth-layout';
+import { findMostProbablePath } from '@/lib/tree/path-finder';
 import EventNodeComponent from './NodeTypes/EventNode';
 import SeedNodeComponent from './NodeTypes/SeedNode';
 import ProbabilityEdge from './EdgeTypes/ProbabilityEdge';
@@ -36,6 +37,9 @@ export default function TreeVisualization({ tree }: Props) {
   const [selectedNode, setSelectedNode] = useState<EventNode | null>(null);
   const [orientation, setOrientation] = useState<'vertical' | 'horizontal'>('vertical');
 
+  // Find most probable path
+  const mostProbablePath = useMemo(() => findMostProbablePath(tree), [tree]);
+
   // Calculate layout (recalculates whenever tree changes)
   const { nodes: initialNodes, edges: initialEdges } = useMemo(
     () =>
@@ -43,8 +47,8 @@ export default function TreeVisualization({ tree }: Props) {
         depthSpacing: 300,
         childSpacing: 200,
         orientation,
-      }),
-    [tree, orientation]
+      }, mostProbablePath),
+    [tree, orientation, mostProbablePath]
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -56,11 +60,11 @@ export default function TreeVisualization({ tree }: Props) {
       depthSpacing: 300,
       childSpacing: 200,
       orientation,
-    });
+    }, mostProbablePath);
 
     setNodes(newNodes);
     setEdges(newEdges);
-  }, [tree, orientation, setNodes, setEdges]);
+  }, [tree, orientation, mostProbablePath, setNodes, setEdges]);
 
   const onNodeClick = useCallback(
     (_: any, node: any) => {

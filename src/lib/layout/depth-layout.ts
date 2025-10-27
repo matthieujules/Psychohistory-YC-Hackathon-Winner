@@ -5,6 +5,7 @@
 import { EventNode, NodePosition, LayoutConfig } from '@/types/tree';
 import { Node, Edge } from 'reactflow';
 import { getEdgeWidth, getEdgeColor } from '../d3/color-scales';
+import { ProbablePath } from '../tree/path-finder';
 
 export function calculateTreeLayout(
   root: EventNode,
@@ -12,7 +13,8 @@ export function calculateTreeLayout(
     depthSpacing: 300,
     childSpacing: 200,
     orientation: 'vertical',
-  }
+  },
+  mostProbablePath?: ProbablePath
 ): { nodes: Node[]; edges: Edge[] } {
   const positions: NodePosition[] = [];
   const nodes: Node[] = [];
@@ -26,6 +28,8 @@ export function calculateTreeLayout(
     const eventNode = findNodeById(root, pos.id);
     if (!eventNode) return;
 
+    const isOnPath = mostProbablePath?.pathIds.has(pos.id) || false;
+
     nodes.push({
       id: pos.id,
       type: eventNode.depth === 0 ? 'seed' : 'event',
@@ -38,26 +42,31 @@ export function calculateTreeLayout(
         justification: eventNode.justification,
         sources: eventNode.sources,
         processingStatus: eventNode.processingStatus,
+        isOnMostProbablePath: isOnPath,
       },
     });
 
     // Create edge to parent with D3-enhanced styling
     if (eventNode.parentId) {
+      const edgeId = `${eventNode.parentId}-${pos.id}`;
+      const isEdgeOnPath = mostProbablePath?.edgeIds.has(edgeId) || false;
+
       const edgeWidth = getEdgeWidth(eventNode.probability);
       const edgeColor = getEdgeColor(eventNode.probability, eventNode.sentiment);
 
       edges.push({
-        id: `${eventNode.parentId}-${pos.id}`,
+        id: edgeId,
         source: eventNode.parentId,
         target: pos.id,
         type: 'probability',
         data: {
           probability: eventNode.probability,
           sentiment: eventNode.sentiment,
+          isOnMostProbablePath: isEdgeOnPath,
         },
-        animated: false,
+        animated: isEdgeOnPath, // Animate edges on most probable path
         style: {
-          strokeWidth: edgeWidth,
+          strokeWidth: isEdgeOnPath ? edgeWidth * 1.5 : edgeWidth,
           stroke: edgeColor,
         },
       });
