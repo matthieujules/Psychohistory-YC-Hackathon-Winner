@@ -11,11 +11,13 @@ export interface SearchConfig {
   rateLimitPerMinute?: number;
 }
 
-// Simple rate limiter
+// Queue-based rate limiter with proper request queuing
 class RateLimiter {
-  private queue: number[] = [];
+  private timestamps: number[] = [];
   private limit: number;
   private windowMs: number;
+  private pendingQueue: Array<() => void> = [];
+  private processing = false;
 
   constructor(limit: number, windowMs: number = 60000) {
     this.limit = limit;
@@ -23,22 +25,43 @@ class RateLimiter {
   }
 
   async acquire(): Promise<void> {
-    const now = Date.now();
+    return new Promise<void>((resolve) => {
+      this.pendingQueue.push(resolve);
+      this.processQueue();
+    });
+  }
 
-    // Remove old timestamps outside the window
-    this.queue = this.queue.filter(timestamp => now - timestamp < this.windowMs);
-
-    // If we've hit the limit, wait
-    if (this.queue.length >= this.limit) {
-      const oldestRequest = this.queue[0];
-      const waitTime = this.windowMs - (now - oldestRequest) + 100; // Add 100ms buffer
-      console.log(`Rate limit reached, waiting ${waitTime}ms...`);
-      await new Promise(resolve => setTimeout(resolve, waitTime));
-      return this.acquire(); // Recursive retry
+  private async processQueue(): Promise<void> {
+    if (this.processing || this.pendingQueue.length === 0) {
+      return;
     }
 
-    // Record this request
-    this.queue.push(now);
+    this.processing = true;
+
+    while (this.pendingQueue.length > 0) {
+      const now = Date.now();
+
+      // Remove timestamps outside the time window
+      this.timestamps = this.timestamps.filter(
+        timestamp => now - timestamp < this.windowMs
+      );
+
+      // If we've hit the limit, wait until the oldest request expires
+      if (this.timestamps.length >= this.limit) {
+        const oldestRequest = this.timestamps[0];
+        const waitTime = this.windowMs - (now - oldestRequest) + 10; // Small buffer
+        console.log(`Rate limit: ${this.timestamps.length}/${this.limit} requests in window. Waiting ${waitTime}ms...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+
+      // We have capacity, process the next request
+      const resolve = this.pendingQueue.shift()!;
+      this.timestamps.push(now);
+      resolve();
+    }
+
+    this.processing = false;
   }
 }
 
@@ -48,9 +71,14 @@ export class SearchEngine {
 
   constructor(config: SearchConfig) {
     this.config = config;
-    // Exa allows 5 queries per second = 300/minute, use conservative 60/minute
-    const rateLimitPerMinute = config.rateLimitPerMinute || 60;
-    this.rateLimiter = new RateLimiter(rateLimitPerMinute);
+    // Exa allows 5 queries per second
+    // Use 5 per second with 1-second window for accurate rate limiting
+    if (config.provider === 'exa') {
+      this.rateLimiter = new RateLimiter(5, 1000); // 5 requests per second
+    } else {
+      const rateLimitPerMinute = config.rateLimitPerMinute || 60;
+      this.rateLimiter = new RateLimiter(rateLimitPerMinute);
+    }
   }
 
   async search(query: string): Promise<Source[]> {
@@ -75,34 +103,66 @@ export class SearchEngine {
     }
   }
 
-  private async searchExa(query: string, maxResults: number): Promise<Source[]> {
-    // Exa API integration
-    const response = await fetch('https://api.exa.ai/search', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': this.config.apiKey || '',
-      },
-      body: JSON.stringify({
-        query,
-        num_results: maxResults,
-        use_autoprompt: true,
-        type: 'auto',
-      }),
-    });
+  private async searchExa(query: string, maxResults: number, retryCount = 0): Promise<Source[]> {
+    const maxRetries = 5;
+    const baseDelay = 1000; // 1 second base delay
 
-    if (!response.ok) {
-      throw new Error(`Exa API error: ${response.statusText}`);
+    try {
+      // Exa API integration
+      const response = await fetch('https://api.exa.ai/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': this.config.apiKey || '',
+        },
+        body: JSON.stringify({
+          query,
+          num_results: maxResults,
+          use_autoprompt: true,
+          type: 'auto',
+        }),
+      });
+
+      // Handle rate limiting with retry
+      if (response.status === 429) {
+        if (retryCount >= maxRetries) {
+          throw new Error(`Exa API rate limit exceeded after ${maxRetries} retries`);
+        }
+
+        // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+        const delay = baseDelay * Math.pow(2, retryCount);
+        console.log(`Rate limited by Exa API. Retrying in ${delay}ms... (attempt ${retryCount + 1}/${maxRetries})`);
+
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return this.searchExa(query, maxResults, retryCount + 1);
+      }
+
+      if (!response.ok) {
+        throw new Error(`Exa API error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      return data.results.map((result: any) => ({
+        url: result.url,
+        title: result.title,
+        snippet: result.text || result.snippet || '',
+        relevanceScore: result.score,
+      }));
+    } catch (error) {
+      // If it's a network error or other non-429 error during retry, rethrow
+      if (error instanceof Error && error.message.includes('rate limit exceeded')) {
+        throw error;
+      }
+      // For other errors, check if we should retry
+      if (retryCount < maxRetries) {
+        const delay = baseDelay * Math.pow(2, retryCount);
+        console.log(`Exa API error, retrying in ${delay}ms... (attempt ${retryCount + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return this.searchExa(query, maxResults, retryCount + 1);
+      }
+      throw error;
     }
-
-    const data = await response.json();
-
-    return data.results.map((result: any) => ({
-      url: result.url,
-      title: result.title,
-      snippet: result.text || result.snippet || '',
-      relevanceScore: result.score,
-    }));
   }
 
   private async searchTavily(query: string, maxResults: number): Promise<Source[]> {
@@ -152,7 +212,7 @@ export const defaultSearchEngine = new SearchEngine({
   provider: (process.env.SEARCH_PROVIDER as any) || 'mock',
   apiKey: process.env.EXA_API_KEY || process.env.TAVILY_API_KEY,
   maxResults: 5,
-  rateLimitPerMinute: 60, // Exa: 5 QPS = 300/min, conservative 60/min
+  // Rate limiting is handled per-provider in the constructor
 });
 
 export async function performBatchSearch(queries: string[]): Promise<ResearchResult[]> {
