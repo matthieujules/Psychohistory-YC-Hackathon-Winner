@@ -11,7 +11,8 @@ import { nodeDebugLogger } from '../logging/node-debug-logger';
 
 export async function processNode(
   node: EventNode,
-  seed: SeedInput
+  seed: SeedInput,
+  nodeMap?: Map<string, EventNode>
 ): Promise<EventNode[]> {
   // Start debug logging if enabled
   if (nodeDebugLogger.isEnabled()) {
@@ -57,6 +58,9 @@ export async function processNode(
       return generateFallbackChildren(node);
     }
 
+    // Build path to this node (for context)
+    const path = buildPath(node, nodeMap);
+
     // Format research for R1 analysis
     const researchText = formatResearchForR1(researchResult);
 
@@ -73,7 +77,9 @@ export async function processNode(
       node.event,
       node.depth,
       researchText,
-      seed.timeframe
+      seed.timeframe,
+      path,
+      seed.event
     );
 
     if (nodeDebugLogger.isEnabled()) {
@@ -149,6 +155,25 @@ ${research.queries.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 
 Sources:
 ${sourcesText}`;
+}
+
+/**
+ * Build path from root to this node
+ */
+function buildPath(node: EventNode, nodeMap?: Map<string, EventNode>): string[] {
+  if (!nodeMap) {
+    return [node.event];
+  }
+
+  const path: string[] = [];
+  let current: EventNode | undefined = node;
+
+  while (current) {
+    path.unshift(current.event);
+    current = current.parentId ? nodeMap.get(current.parentId) : undefined;
+  }
+
+  return path;
 }
 
 function generateFallbackChildren(node: EventNode): EventNode[] {

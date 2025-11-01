@@ -148,6 +148,7 @@ def generate_case_with_candidates(template: Dict, case_index: int) -> Dict:
 
     levels = []
     cumulative_months = 0
+    path = [template["seed_event"]]  # Start with seed
 
     for depth_idx, outcome in enumerate(template["actual_outcomes"]):
         # Generate alternatives (label=0)
@@ -171,14 +172,21 @@ def generate_case_with_candidates(template: Dict, case_index: int) -> Dict:
         # Calculate date
         event_date = seed_date + timedelta(days=outcome["months"] * 30)
 
+        # Parent is last event in path (for depth 1, it's the seed)
+        parent_event = path[-1] if path else template["seed_event"]
+
         levels.append({
             "depth": depth_idx + 1,
+            "parent_event": parent_event,
+            "path": path.copy(),  # Path UP TO this depth (not including current)
             "timeframe_months": outcome["months"] - cumulative_months,
             "date": event_date.strftime("%Y-%m-%d"),
             "research_summary": f"Research period: {cumulative_months}-{outcome['months']} months after seed event",
             "candidates": candidates
         })
 
+        # Add this outcome to path for next depth
+        path.append(outcome["event"])
         cumulative_months = outcome["months"]
 
     return {
@@ -194,7 +202,7 @@ def generate_case_with_candidates(template: Dict, case_index: int) -> Dict:
     }
 
 
-def generate_dataset(num_cases: int = 30, output_path: str = "training/data/historical_cases.jsonl"):
+def generate_dataset(num_cases: int = 30, output_path: str = "data/historical_cases.jsonl"):
     """Generate dataset with candidate sets"""
     cases = []
 

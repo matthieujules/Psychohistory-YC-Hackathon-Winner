@@ -20,13 +20,17 @@ export async function analyzeProbabilities(
   parentEvent: string,
   depth: number,
   researchSummary: string,
-  timeframe?: string
+  timeframe?: string,
+  path?: string[],
+  seedEvent?: string
 ): Promise<ProbabilityOutput[]> {
   const prompt = PROBABILITY_ANALYSIS_PROMPT(
     parentEvent,
     depth,
     researchSummary,
-    timeframe
+    timeframe,
+    path,
+    seedEvent
   );
 
   try {

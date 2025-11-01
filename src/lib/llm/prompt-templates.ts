@@ -27,16 +27,18 @@ export const PROBABILITY_ANALYSIS_PROMPT = (
   parentEvent: string,
   depth: number,
   research: string,
-  timeframe?: string
+  timeframe?: string,
+  path?: string[],
+  seedEvent?: string
 ) => `
-Event: ${parentEvent}
+${seedEvent ? `Initial Event: ${seedEvent}\n` : ''}${path && path.length > 1 ? `Path so far: ${path.join(' → ')}\n` : ''}Current Event: ${parentEvent}
 Depth: ${depth}/5
 Timeframe: ${timeframe || 'Next significant development'}
 
 Research:
 ${research}
 
-Predict 1-5 possible next events based on the research.
+Predict 1-5 possible next events following from the current situation.
 
 Requirements:
 - Probabilities sum to 1.0

@@ -118,8 +118,8 @@ export class TreeBuilder {
                 data: { nodeId: node.id, depth: node.depth, event: node.event }
               });
 
-              // Process node to generate children
-              const children = await processNode(node, seed);
+              // Process node to generate children (pass nodeMap for path context)
+              const children = await processNode(node, seed, this.state.nodeMap);
 
               // Add children to tree
               node.children = children;

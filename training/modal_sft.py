@@ -163,11 +163,14 @@ def train_sft_impl(
         training_texts = []
 
         for level in case['levels']:
-            # Build prompt for this depth level
-            prompt = f"""Event: {case['seed']['event']}
+            # Build prompt for this depth level with path context
+            path_str = ' → '.join(level['path']) if level.get('path') else case['seed']['event']
+
+            prompt = f"""Initial Event: {case['seed']['event']}
 Date: {case['seed']['date']}
 Context: {case['seed']['context']}
-Depth: {level['depth']}
+Path so far: {path_str}
+Current Depth: {level['depth']}
 Timeframe: next {level['timeframe_months']} months
 
 Research summary:
