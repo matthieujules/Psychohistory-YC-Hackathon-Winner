@@ -45,7 +45,7 @@ image = (
 
 @app.function(
     image=image,
-    gpu="A10G",  # A10G GPU (24GB) - Unsloth only needs 14GB!
+    gpu="H100",  # H100 GPU for fastest training
     timeout=7200,  # 2 hours
     volumes={"/data": volume},
     secrets=[modal.Secret.from_name("huggingface-secret")],
@@ -53,7 +53,8 @@ image = (
 )
 def train_sft_impl(
     model_name: str = "unsloth/gpt-oss-20b",  # ✅ Use Unsloth's optimized variant!
-    data_path: str = "/training_data/real_historical_cases.jsonl",  # Mounted from local
+    train_data_path: str = "/training_data/train.jsonl",  # Training split
+    val_data_path: str = "/training_data/val.jsonl",  # Validation split
     output_dir: str = "/data/models/sft",
     lora_rank: int = 64,
     learning_rate: float = 3e-4,
@@ -91,7 +92,8 @@ def train_sft_impl(
     print(f"  Model: {model_name}")
     print(f"  LoRA Rank: {lora_rank}")
     print(f"  Learning Rate: {learning_rate}")
-    print(f"  Data: {data_path}")
+    print(f"  Train Data: {train_data_path}")
+    print(f"  Val Data: {val_data_path}")
 
     # Initialize wandb (optional)
     try:
@@ -143,14 +145,20 @@ def train_sft_impl(
         loftq_config=None,
     )
 
-    # Load and prepare dataset
-    print(f"\n📚 Loading training data from {data_path}...")
-    cases = []
-    with open(data_path) as f:
+    # Load and prepare datasets
+    print(f"\n📚 Loading training data...")
+    train_cases = []
+    with open(train_data_path) as f:
         for line in f:
-            cases.append(json.loads(line))
+            train_cases.append(json.loads(line))
 
-    print(f"  Loaded {len(cases)} cases")
+    val_cases = []
+    with open(val_data_path) as f:
+        for line in f:
+            val_cases.append(json.loads(line))
+
+    print(f"  Train: {len(train_cases)} cases")
+    print(f"  Val:   {len(val_cases)} cases")
 
     # Format training examples
     def format_example(case):
@@ -206,31 +214,41 @@ Output JSON only:
         # Join all depth levels for this case
         return {"text": "\n\n".join(training_texts)}
 
-    formatted_data = [format_example(case) for case in cases]
+    train_formatted = [format_example(case) for case in train_cases]
+    val_formatted = [format_example(case) for case in val_cases]
 
-    # Create HuggingFace dataset
-    dataset = Dataset.from_list(formatted_data)
+    # Create HuggingFace datasets
+    train_dataset = Dataset.from_list(train_formatted)
+    val_dataset = Dataset.from_list(val_formatted)
 
     print(f"\n📝 Sample training example:")
-    print(dataset[0]['text'][:500] + "...")
+    print(train_dataset[0]['text'][:500] + "...")
 
     # Training configuration
     from trl import SFTTrainer, SFTConfig
 
-    # Unsloth SFT Trainer with SFTConfig
+    # Unsloth SFT Trainer with SFTConfig and evaluation
     trainer = SFTTrainer(
         model=model,
         tokenizer=tokenizer,
-        train_dataset=dataset,
+        train_dataset=train_dataset,
+        eval_dataset=val_dataset,  # Add validation set
         dataset_text_field="text",
         max_seq_length=2048,
         args=SFTConfig(
             per_device_train_batch_size=batch_size,
+            per_device_eval_batch_size=batch_size,  # Eval batch size
             gradient_accumulation_steps=16,  # Effective batch = batch_size * 16
             warmup_steps=5,
             num_train_epochs=num_epochs,
             learning_rate=learning_rate,
             logging_steps=1,
+            eval_strategy="steps",  # Evaluate every N steps
+            eval_steps=2,  # Evaluate every 2 training steps
+            save_strategy="steps",  # Must match eval_strategy
+            save_steps=2,  # Save every 2 steps (same as eval)
+            load_best_model_at_end=True,  # Load best checkpoint at end
+            metric_for_best_model="eval_loss",  # Use eval loss for best model
             optim="adamw_8bit",
             weight_decay=0.01,
             lr_scheduler_type="linear",
@@ -259,7 +277,8 @@ Output JSON only:
 
     return {
         "output_dir": f"{output_dir}/final",
-        "num_cases": len(cases),
+        "num_train_cases": len(train_cases),
+        "num_val_cases": len(val_cases),
         "num_epochs": num_epochs,
     }
 
@@ -303,7 +322,7 @@ def main(
     upload_data: bool = False,  # Data already uploaded via test_volume
     run_training: bool = True,
     lora_rank: int = 64,
-    num_epochs: int = 1,  # Default to 1 for quick testing
+    num_epochs: int = 3,  # Default to 3 epochs for full training
 ):
     """
     Main entry point for SFT training
@@ -335,6 +354,7 @@ def main(
         print(f"\n{'='*60}")
         print(f"✅ Training Complete!")
         print(f"  Output: {result['output_dir']}")
-        print(f"  Cases: {result['num_cases']}")
+        print(f"  Train Cases: {result['num_train_cases']}")
+        print(f"  Val Cases: {result['num_val_cases']}")
         print(f"  Epochs: {result['num_epochs']}")
         print(f"{'='*60}")

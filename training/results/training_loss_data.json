@@ -1,0 +1,28 @@
+{
+  "run_info": {
+    "date": "2025-11-01",
+    "model": "unsloth/gpt-oss-20b",
+    "lora_rank": 64,
+    "num_epochs": 1,
+    "num_cases": 91,
+    "total_steps": 6,
+    "batch_size": 1,
+    "gradient_accumulation": 16,
+    "effective_batch_size": 16
+  },
+  "loss_curve": [
+    {"step": 1, "loss": 3.1566, "learning_rate": 0.0, "epoch": 0.18, "grad_norm": 10.688},
+    {"step": 2, "loss": 3.323, "learning_rate": 0.00006, "epoch": 0.35, "grad_norm": 11.005},
+    {"step": 3, "loss": 3.1044, "learning_rate": 0.00012, "epoch": 0.53, "grad_norm": 10.542},
+    {"step": 4, "loss": 2.0761, "learning_rate": 0.00018, "epoch": 0.70, "grad_norm": 7.428},
+    {"step": 5, "loss": 1.2604, "learning_rate": 0.00024, "epoch": 0.88, "grad_norm": 1.292},
+    {"step": 6, "loss": 1.1167, "learning_rate": 0.0003, "epoch": 1.0, "grad_norm": 0.453}
+  ],
+  "summary": {
+    "initial_loss": 3.1566,
+    "final_loss": 1.1167,
+    "improvement_percent": 64.6,
+    "avg_loss": 2.3395,
+    "training_time_seconds": 387.8
+  }
+}
