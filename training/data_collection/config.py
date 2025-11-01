@@ -35,7 +35,7 @@ class Config:
     DOMAINS: List[str] = None
 
     # Tree Structure
-    MAX_DEPTH: int = 4  # 4 levels deep
+    MAX_DEPTH: int = 3  # 3 levels deep (matches SFT training depth)
     ALTERNATIVES_PER_DEPTH: int = 3  # 3 counterfactuals per level
 
     # Output (use absolute paths to avoid doubling)

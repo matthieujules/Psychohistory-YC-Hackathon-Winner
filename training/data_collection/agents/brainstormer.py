@@ -18,7 +18,7 @@ POST_CUTOFF_PROMPT = """You are generating RECENT historical events (July 2024 -
 CRITICAL CONSTRAINTS:
 - Events from {start_date} to {end_date} ONLY
 - These are AFTER GPT-OSS-20B's June 2024 knowledge cutoff
-- Seed must allow 4-month outcome chain to complete by October 31, 2025
+- Seed must allow 3-month outcome chain to complete by October 31, 2025
 - Focus on well-documented events with clear causal chains
 
 REQUIREMENTS:
@@ -92,8 +92,8 @@ Generate EXACTLY {count} events from {start_year}-{end_year}.
 
 def generate_post_cutoff_seeds(num_seeds: int) -> List[Dict]:
     """Generate post-cutoff seeds (July 2024 - June 2025)"""
-    print(f"\n🔮 Generating {num_seeds} POST-CUTOFF seeds (Jul 2024 - Jun 2025)...")
-    print(f"   These are outside GPT-OSS-20B's training data")
+    print(f"\n🔮 Generating {num_seeds} POST-CUTOFF seeds (Jul 2024 - Jun 2025)...", flush=True)
+    print(f"   These are outside GPT-OSS-20B's training data", flush=True)
 
     seeds = []
     batch_size = 10
@@ -103,7 +103,8 @@ def generate_post_cutoff_seeds(num_seeds: int) -> List[Dict]:
         if batch_count <= 0:
             break
 
-        print(f"\n  📦 Batch {batch_num + 1}: {batch_count} seeds...")
+        print(f"\n  📦 Batch {batch_num + 1}: Generating {batch_count} seeds...", flush=True)
+        print(f"     Calling DeepSeek API (may take 30-60 seconds)...", flush=True)
 
         prompt = POST_CUTOFF_PROMPT.format(
             count=batch_count,
@@ -112,12 +113,14 @@ def generate_post_cutoff_seeds(num_seeds: int) -> List[Dict]:
         )
 
         try:
+            print(f"     🔄 Waiting for LLM response...", flush=True)
             response = llm_client.call_research_model(
                 prompt=prompt,
                 system_prompt="You are a current events researcher focused on 2024-2025 events.",
                 temperature=0.9,
                 max_tokens=4000
             )
+            print(f"     ✅ LLM response received ({len(response)} chars)", flush=True)
 
             batch_seeds = parse_json_response(response)
 

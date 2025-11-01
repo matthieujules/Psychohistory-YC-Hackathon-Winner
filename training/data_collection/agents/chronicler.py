@@ -1,7 +1,7 @@
 """
-Chronicler Agent: Find actual 4-depth outcome chains
+Chronicler Agent: Find actual 3-depth outcome chains
 
-For each seed event, search for what ACTUALLY happened in the 12-24 months
+For each seed event, search for what ACTUALLY happened in the months
 following the event. Build a causal chain of real outcomes.
 """
 
@@ -161,7 +161,7 @@ def search_for_outcome(
 
 def chronicle_seed(seed: Dict) -> Optional[Dict]:
     """
-    Chronicle a single seed: find 4-depth outcome chain
+    Chronicle a single seed: find 3-depth outcome chain
 
     Args:
         seed: Seed event dict
@@ -189,9 +189,9 @@ def chronicle_seed(seed: Dict) -> Optional[Dict]:
     path = [seed["event"]]
     current_event = seed["event"]
 
-    # Build 4-depth chain
+    # Build 3-depth chain
     for depth in range(1, config.MAX_DEPTH + 1):
-        timeframe = depth  # 1, 2, 3, 4 months
+        timeframe = depth  # 1, 2, 3 months
 
         print(f"\n  🔍 Depth {depth} (t+{timeframe} months)...")
 

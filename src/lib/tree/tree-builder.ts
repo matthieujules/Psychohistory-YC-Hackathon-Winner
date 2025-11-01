@@ -13,7 +13,7 @@ export class TreeBuilder {
   private onEvent?: (event: TreeStreamEvent) => void;
   private startTime: number = 0;
 
-  constructor(maxDepth = 5, maxConcurrent = 20) {
+  constructor(maxDepth = 3, maxConcurrent = 20) {
     this.maxDepth = maxDepth;
     this.maxConcurrent = maxConcurrent;
     this.state = {

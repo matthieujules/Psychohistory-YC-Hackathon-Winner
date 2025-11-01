@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
 
         try {
           // Create tree builder with event callback
-          const builder = new TreeBuilder(seed.maxDepth || 5, 20);
+          const builder = new TreeBuilder(seed.maxDepth || 3, 20);
 
           // Generate tree with streaming events
           await builder.buildTree(seed, (event) => {

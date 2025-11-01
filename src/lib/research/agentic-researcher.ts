@@ -65,7 +65,9 @@ const MIN_SOURCES = 3;
 export async function conductAgenticResearch(
   event: string,
   context?: string,
-  depth?: number
+  depth?: number,
+  path?: string[],
+  seedEvent?: string
 ): Promise<ResearchResult> {
   console.log(`[Agentic Research] Starting for: ${event.substring(0, 60)}...`);
 
@@ -80,8 +82,10 @@ export async function conductAgenticResearch(
     {
       role: 'user',
       content: `Research this event: ${event}
+${seedEvent ? `Initial event: ${seedEvent}` : ''}
+${path && path.length > 1 ? `Path so far: ${path.join(' → ')}` : ''}
 ${context ? `Context: ${context}` : ''}
-${depth ? `Analysis depth: ${depth}/5` : ''}
+${depth ? `Analysis depth: ${depth}/3` : ''}
 
 Find 3-5 diverse, credible sources covering:
 1. Historical precedents with actual outcomes and data

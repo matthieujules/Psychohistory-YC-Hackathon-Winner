@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate tree
-    const builder = new TreeBuilder(seed.maxDepth || 5, 20);
+    const builder = new TreeBuilder(seed.maxDepth || 3, 20);
     const tree = await builder.buildTree(seed);
 
     return NextResponse.json({ tree });

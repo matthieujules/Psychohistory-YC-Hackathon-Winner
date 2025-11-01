@@ -35,12 +35,28 @@ npm test
 **Prerequisites:** Modal CLI setup and secrets configured (see training/README.md)
 
 ```bash
-# Generate synthetic training data
+# === DATA COLLECTION (Real Historical Data) ===
+# Generate 100 seed events (70 post-cutoff + 30 in-distribution)
+python3 training/data_collection/run_brainstorm.py
+
+# Find actual 3-depth outcome chains for each seed
+python3 training/data_collection/run_chronicle.py
+
+# Generate alternative outcomes (for counterfactual training)
+python3 training/data_collection/run_alternatives.py
+
+# Full data collection pipeline
+python3 training/data_collection/pipeline.py
+
+# === SYNTHETIC DATA (Optional) ===
+# Generate synthetic training data (for testing)
 python3 training/scripts/generate_synthetic_data.py
 
+# === EVALUATION ===
 # Test evaluation metrics
 python3 training/evaluation/evaluator.py
 
+# === TRAINING ===
 # Run SFT training (Phase 1, ~2-3 hours, H100)
 modal run training/modal_sft.py
 
@@ -50,6 +66,7 @@ modal run training/modal_grpo.py
 # Full end-to-end pipeline
 python3 training/run_pipeline.py
 
+# === INFERENCE ===
 # Test inference with hot-swappable adapters
 python3 training/inference.py
 ```
@@ -77,22 +94,35 @@ The tree is built **depth-by-depth** (not breadth-first, not recursive):
 
 ### Agentic Research System
 
-Uses **DeepSeek V3.1** with OpenAI-compatible tool calling (not streaming, not sequential):
+Uses **two-model architecture** for optimal performance:
+
+**Phase 1: Research (DeepSeek V3.1)**
+- Model: `deepseek/deepseek-chat` via OpenRouter
+- Tool calling enabled (OpenAI-compatible)
+- Conducts iterative research with search tools
 
 **Tools available:**
 - `search(query)` - Execute web search, returns sources
 - `finish_research(summary, confidence)` - Terminate research
 
-**Flow:**
+**Research flow:**
 1. LLM receives research task with tool definitions
 2. LLM decides which tool to call (can call multiple)
 3. Execute tool calls, return results to LLM
 4. LLM processes results, decides next action
 5. Repeat until `finish_research` called or max iterations (5)
 
+**Phase 2: Synthesis (DeepSeek R1)**
+- Model: `deepseek/deepseek-r1` via OpenRouter
+- Reasoning-optimized model
+- Analyzes research results and generates probabilities
+- Produces justifications and sentiment scores
+
 **Key files:**
-- `src/lib/research/agentic-researcher.ts` - Tool calling orchestration
+- `src/lib/research/agentic-researcher.ts` - Tool calling orchestration (Phase 1)
 - `src/lib/research/search-engine.ts` - Exa/Tavily/mock search providers
+- `src/lib/tree/node-processor.ts` - Two-phase orchestration
+- `src/lib/llm/probability-analyzer.ts` - Probability synthesis (Phase 2)
 
 ### Streaming Architecture
 
@@ -136,7 +166,27 @@ normalized = [
 
 **Goal:** Train models to predict actual historical outcomes (not synthetic forecasts)
 
-**Two-phase approach:**
+**Data Collection Pipeline:**
+Three-agent system to build training dataset from real historical events:
+
+1. **Brainstormer Agent** (`brainstormer.py`) - Generate 100 seed events
+   - 70% Post-cutoff (July 2024 - June 2025): Out-of-distribution forecasting
+   - 30% In-distribution (2019-2022): Calibration learning
+   - Domains: Politics, Economics, Technology, Geopolitics, Business
+   - Requirements: Specific dates, measurable outcomes, well-documented
+
+2. **Chronicler Agent** (`chronicler.py`) - Find actual 3-depth outcome chains
+   - Uses Exa/Tavily search to find what happened after each seed
+   - Builds depth-3 causal chains (seed → 1mo → 2mo → 3mo outcomes)
+   - Search window: ±2 weeks around target timeframe
+   - Validates outcomes are direct consequences with clear documentation
+
+3. **Alternative Generator** (`alternative_gen.py`) - Create counterfactuals
+   - Generate plausible alternative outcomes that didn't happen
+   - Used for negative examples and probability calibration
+   - Ensures model learns to distinguish likely from unlikely paths
+
+**Two-phase training approach:**
 1. **SFT (Supervised Fine-Tuning)** - Learn to predict events that happened
    - LoRA rank 64 (higher capacity for learning)
    - H100 GPU, 2-3 hours, ~$6-9
@@ -150,6 +200,10 @@ normalized = [
 **Hot-swapping:** Load different LoRA adapters without reloading base model for A/B testing
 
 **Key files:**
+- `training/data_collection/agents/brainstormer.py` - Seed generation
+- `training/data_collection/agents/chronicler.py` - Outcome chains
+- `training/data_collection/agents/alternative_gen.py` - Counterfactuals
+- `training/data_collection/pipeline.py` - End-to-end data collection
 - `training/modal_sft.py` - Phase 1 training
 - `training/modal_grpo.py` - Phase 2 training
 - `training/inference.py` - Hot-swappable inference
@@ -245,6 +299,9 @@ python3 training/evaluation/evaluator.py
 5. **LoRA rank impacts memory:** SFT (rank 64) needs H100, GRPO (rank 4) fits on A10G
 6. **Search provider must be configured:** Defaults to 'mock' with fake data
 7. **Streaming is SSE not WebSocket:** Use EventSource API in frontend
+8. **Data collection uses checkpoints:** Progress saved in `training/data_collection/checkpoints/` - delete to restart
+9. **Post-cutoff events must allow 3-month chains:** Seed events after March 2025 won't have complete outcome data
+10. **Chronicler search requires API keys:** Exa or Tavily required for real historical outcome research
 
 ## Project Structure Highlights
 
@@ -264,13 +321,24 @@ src/
 └── types/                         # TypeScript definitions
 
 training/
-├── modal_sft.py                   # SFT training (rank 64)
-├── modal_grpo.py                  # GRPO training (rank 4)
-├── inference.py                   # Hot-swappable inference
+├── data_collection/               # Real historical data pipeline
+│   ├── agents/
+│   │   ├── brainstormer.py       # Generate 100 seed events
+│   │   ├── chronicler.py         # Find actual outcome chains
+│   │   └── alternative_gen.py    # Generate counterfactuals
+│   ├── pipeline.py               # End-to-end data collection
+│   ├── run_brainstorm.py         # Run brainstormer standalone
+│   ├── run_chronicle.py          # Run chronicler standalone
+│   ├── config.py                 # LLM/search config
+│   ├── utils.py                  # Shared utilities
+│   └── checkpoints/              # Incremental progress saves
+├── modal_sft.py                  # SFT training (rank 64)
+├── modal_grpo.py                 # GRPO training (rank 4)
+├── inference.py                  # Hot-swappable inference
 ├── evaluation/
-│   └── evaluator.py               # Metrics + match coverage
+│   └── evaluator.py              # Metrics + match coverage
 └── scripts/
-    └── generate_synthetic_data.py # Training data generator
+    └── generate_synthetic_data.py # Synthetic data (testing only)
 ```
 
 ## Additional Documentation

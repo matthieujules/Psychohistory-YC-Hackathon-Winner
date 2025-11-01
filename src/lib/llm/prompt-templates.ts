@@ -32,7 +32,7 @@ export const PROBABILITY_ANALYSIS_PROMPT = (
   seedEvent?: string
 ) => `
 ${seedEvent ? `Initial Event: ${seedEvent}\n` : ''}${path && path.length > 1 ? `Path so far: ${path.join(' → ')}\n` : ''}Current Event: ${parentEvent}
-Depth: ${depth}/5
+Depth: ${depth}/3
 Timeframe: ${timeframe || 'Next significant development'}
 
 Research:
@@ -52,7 +52,7 @@ Output JSON only:
 
 export const TIMEFRAME_PROMPT = (event: string, depth: number) => `
 Given this event: ${event}
-At depth: ${depth}/5
+At depth: ${depth}/3
 
 What is a reasonable timeframe for the NEXT significant development?
 

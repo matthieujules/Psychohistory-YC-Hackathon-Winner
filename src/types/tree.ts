@@ -8,7 +8,7 @@ export interface EventNode {
   probability: number; // 0-1, must sum to 1.0 with siblings
   justification: string;
   sentiment: number; // -100 to 100
-  depth: number; // 0-5
+  depth: number; // 0-3
   sources: Source[];
   children: EventNode[];
   parentId: string | null;

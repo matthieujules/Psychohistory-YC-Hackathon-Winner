@@ -33,10 +33,14 @@ export async function processNode(
       console.log('[Phase 1] Starting agentic research with V3.1...');
     }
 
+    const path = buildPath(node, nodeMap);
+
     const researchResult = await conductAgenticResearch(
       node.event,
       seed.context,
-      node.depth
+      node.depth,
+      path,
+      seed.event
     );
 
     if (nodeDebugLogger.isEnabled()) {
@@ -57,9 +61,6 @@ export async function processNode(
       console.warn('[Phase 1] No research results found, generating fallback outcomes');
       return generateFallbackChildren(node);
     }
-
-    // Build path to this node (for context)
-    const path = buildPath(node, nodeMap);
 
     // Format research for R1 analysis
     const researchText = formatResearchForR1(researchResult);
