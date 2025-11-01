@@ -38,8 +38,6 @@ export interface ResearchResult {
 export interface ProbabilityOutput {
   event: string;
   probability: number;
-  justification: string;
-  sentiment: number;
 }
 
 export interface TreeState {
