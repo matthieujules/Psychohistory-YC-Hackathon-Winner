@@ -16,36 +16,48 @@ app = modal.App("psychohistory-sft")
 volume = modal.Volume.from_name("psychohistory-data", create_if_missing=True)
 
 # GPU image with all dependencies
+# Install torch 2.8.0 first (has torch.int1 for torchao), then latest Unsloth (supports gpt-oss-20b)
 image = (
     modal.Image.debian_slim(python_version="3.11")
+    .apt_install("git")  # Needed for git-based pip installs
     .pip_install(
-        "torch>=2.0.0",
-        "transformers>=4.36.0",
-        "peft>=0.7.0",
-        "datasets>=2.16.0",
-        "accelerate>=0.25.0",
-        "bitsandbytes>=0.41.0",
+        # Install torch 2.8+ first (has torch.int1 support for torchao)
+        "torch>=2.8.0",
+        "triton>=3.4.0",
+        "torchvision",
+        # Pin compatible versions for latest Unsloth
+        "transformers>=4.51.3,<=4.57.2",  # Unsloth's supported range
+        "trl==0.23.1",  # Latest Unsloth needs newer trl (but <=0.23.1)
+        "peft>=0.7.1",
+        "accelerate>=1.9.0",
+        "datasets>=3.6.0",
+        "bitsandbytes>=0.43.0",
+        "xformers>=0.0.27",
         "wandb>=0.16.0",
-        "trl>=0.7.0",
+    )
+    .run_commands(
+        # Install latest Unsloth from git (supports gpt-oss-20b, works with torch 2.8+)
+        "pip install --no-cache-dir --upgrade 'unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git'",
+        "pip install --no-cache-dir --upgrade 'git+https://github.com/unslothai/unsloth-zoo.git'",
     )
 )
 
 
 @app.function(
     image=image,
-    gpu="H100",  # H100 GPU (80GB) for GPT OSS 20B
+    gpu="A10G",  # A10G GPU (24GB) - Unsloth only needs 14GB!
     timeout=7200,  # 2 hours
     volumes={"/data": volume},
     secrets=[modal.Secret.from_name("huggingface-secret")],
 )
 def train_sft_impl(
-    model_name: str = "openai/gpt-oss-20b",  # OpenAI's GPT OSS 20B
+    model_name: str = "unsloth/gpt-oss-20b",  # ✅ Use Unsloth's optimized variant!
     data_path: str = "/data/synthetic_cases.jsonl",
     output_dir: str = "/data/models/sft",
     lora_rank: int = 64,
     learning_rate: float = 3e-4,
     num_epochs: int = 3,
-    batch_size: int = 4,
+    batch_size: int = 1,
 ):
     """
     Train SFT model with LoRA rank 64
@@ -59,15 +71,9 @@ def train_sft_impl(
         num_epochs: Number of training epochs
         batch_size: Batch size per GPU
     """
-    import torch
     import os
-    from transformers import (
-        AutoModelForCausalLM,
-        AutoTokenizer,
-        TrainingArguments,
-        Trainer,
-    )
-    from peft import LoraConfig, get_peft_model, TaskType
+    import torch
+    from unsloth import FastLanguageModel
     from datasets import Dataset
     import wandb
 
@@ -80,7 +86,7 @@ def train_sft_impl(
     else:
         print("⚠️  No HuggingFace token found")
 
-    print(f"🚀 Starting SFT training")
+    print(f"🚀 Starting SFT training with Unsloth")
     print(f"  Model: {model_name}")
     print(f"  LoRA Rank: {lora_rank}")
     print(f"  Learning Rate: {learning_rate}")
@@ -88,47 +94,53 @@ def train_sft_impl(
 
     # Initialize wandb (optional)
     try:
-        wandb.init(
-            project="psychohistory-training",
-            name=f"sft-rank{lora_rank}",
-            config={
-                "model": model_name,
-                "lora_rank": lora_rank,
-                "learning_rate": learning_rate,
-                "epochs": num_epochs,
-            }
-        )
-    except:
-        print("⚠️  WandB not configured, skipping logging")
+        import os
+        if os.environ.get("WANDB_API_KEY"):
+            wandb.init(
+                project="psychohistory-training",
+                name=f"sft-unsloth-rank{lora_rank}",
+                config={
+                    "model": model_name,
+                    "lora_rank": lora_rank,
+                    "learning_rate": learning_rate,
+                    "epochs": num_epochs,
+                }
+            )
+        else:
+            # Disable wandb if no API key
+            os.environ["WANDB_MODE"] = "disabled"
+            print("⚠️  WandB API key not found, logging disabled")
+    except Exception as e:
+        print(f"⚠️  WandB init failed: {e}, continuing without logging")
 
-    # Load tokenizer
-    print("\n📥 Loading tokenizer...")
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+    # Load model with Unsloth (memory efficient!)
+    print("\n📥 Loading model with Unsloth (4-bit quantized)...")
+    print(f"  Model: {model_name}")
+    print(f"  Expected VRAM: ~14GB (vs 76GB+ with openai/gpt-oss-20b)")
 
-    # Load base model
-    print("\n📥 Loading base model...")
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype=torch.bfloat16,
-        device_map="auto",
-        trust_remote_code=True,
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name=model_name,  # Use the parameter (defaults to unsloth/gpt-oss-20b)
+        max_seq_length=2048,
+        dtype=None,  # Auto-detect
+        load_in_4bit=True,  # QLoRA: 14GB VRAM
+        full_finetuning=False,
     )
 
-    # Configure LoRA (Thinking Machines recommendations)
-    print(f"\n🔧 Configuring LoRA with rank {lora_rank}...")
-    lora_config = LoraConfig(
+    # Add LoRA adapters with Unsloth
+    print(f"\n🔧 Adding LoRA adapters (rank {lora_rank})...")
+    model = FastLanguageModel.get_peft_model(
+        model,
         r=lora_rank,
-        lora_alpha=lora_rank * 2,  # Alpha = 2*rank
-        target_modules="all-linear",  # Apply to ALL layers
-        lora_dropout=0.05,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
+                        "gate_proj", "up_proj", "down_proj"],
+        lora_alpha=16,  # Unsloth recommends 16 for GPT-OSS
+        lora_dropout=0,  # 0 for inference, small value for training
         bias="none",
-        task_type=TaskType.CAUSAL_LM,
+        use_gradient_checkpointing="unsloth",
+        random_state=3407,
+        use_rslora=False,
+        loftq_config=None,
     )
-
-    model = get_peft_model(model, lora_config)
-    model.print_trainable_parameters()
 
     # Load and prepare dataset
     print(f"\n📚 Loading training data from {data_path}...")
@@ -188,54 +200,42 @@ Outcomes:"""
     print(f"\n📝 Sample training example:")
     print(dataset[0]['text'][:500] + "...")
 
-    # Tokenize
-    def tokenize_function(examples):
-        return tokenizer(
-            examples["text"],
-            padding="max_length",
-            truncation=True,
-            max_length=2048,
-            return_tensors="pt",
-        )
+    # Training configuration
+    from trl import SFTTrainer, SFTConfig
 
-    tokenized_dataset = dataset.map(
-        tokenize_function,
-        batched=True,
-        remove_columns=dataset.column_names,
-    )
-
-    # Training arguments
-    training_args = TrainingArguments(
-        output_dir=output_dir,
-        num_train_epochs=num_epochs,
-        per_device_train_batch_size=batch_size,
-        gradient_accumulation_steps=4,
-        learning_rate=learning_rate,
-        lr_scheduler_type="cosine",
-        warmup_ratio=0.1,
-        logging_steps=10,
-        save_strategy="epoch",
-        save_total_limit=2,
-        bf16=True,  # Use bfloat16
-        report_to="wandb" if wandb.run else "none",
-        remove_unused_columns=False,
-    )
-
-    # Trainer
-    trainer = Trainer(
+    # Unsloth SFT Trainer with SFTConfig
+    trainer = SFTTrainer(
         model=model,
-        args=training_args,
-        train_dataset=tokenized_dataset,
         tokenizer=tokenizer,
+        train_dataset=dataset,
+        dataset_text_field="text",
+        max_seq_length=2048,
+        args=SFTConfig(
+            per_device_train_batch_size=batch_size,
+            gradient_accumulation_steps=16,  # Effective batch = batch_size * 16
+            warmup_steps=5,
+            num_train_epochs=num_epochs,
+            learning_rate=learning_rate,
+            logging_steps=1,
+            optim="adamw_8bit",
+            weight_decay=0.01,
+            lr_scheduler_type="linear",
+            seed=3407,
+            output_dir=output_dir,
+            fp16=not torch.cuda.is_bf16_supported(),
+            bf16=torch.cuda.is_bf16_supported(),
+        ),
     )
 
-    # Train
-    print(f"\n🏋️ Starting training for {num_epochs} epochs...")
+    # Train with Unsloth
+    print(f"\n🏋️ Starting Unsloth training for {num_epochs} epochs...")
+    print(f"  Memory usage should be ~14GB (vs 76GB+ with standard training)")
     trainer.train()
 
     # Save final model
     print(f"\n💾 Saving model to {output_dir}/final...")
-    trainer.save_model(f"{output_dir}/final")
+    model.save_pretrained(f"{output_dir}/final")
+    tokenizer.save_pretrained(f"{output_dir}/final")
 
     # Commit volume
     volume.commit()
