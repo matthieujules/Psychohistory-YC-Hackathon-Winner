@@ -1,195 +1,67 @@
 # PsychoHistory Training Pipeline
 
-Train models to output accurate probability trees by learning from historical events with known outcomes.
+Train GPT-OSS-20B to predict event outcomes using candidate-based SFT.
 
 ## Quick Start
 
 ```bash
-# 1. Generate synthetic data
-python3 training/scripts/generate_synthetic_data.py
+# 1. Generate synthetic data (candidate format)
+cd training && python3 scripts/generate_candidate_data.py
 
-# 2. Test evaluation pipeline
-python3 training/evaluation/evaluator.py
+# 2. Train SFT (1 epoch test)
+cd training && python3 -m modal run modal_sft.py --num-epochs=1 --lora-rank=8
 
-# 3. Run full pipeline (requires Modal setup)
-python3 training/run_pipeline.py
+# 3. Train SFT (full)
+cd training && python3 -m modal run modal_sft.py --num-epochs=3 --lora-rank=64
 ```
 
-## Architecture Overview
+## How It Works
 
-```
-training/
-├── TRAINING_PIPELINE.md       # Comprehensive pipeline documentation
-├── README.md                   # This file
-├── data/
-│   └── synthetic_cases.jsonl  # Training data
-├── scripts/
-│   └── generate_synthetic_data.py  # Data generator
-├── evaluation/
-│   └── evaluator.py           # Evaluation with match coverage
-├── models/                    # Saved checkpoints (Modal volume)
-├── results/                   # Evaluation results
-├── modal_sft.py              # SFT training (rank 64)
-├── modal_grpo.py             # GRPO training (rank 4)
-├── inference.py              # Hot-swappable inference
-└── run_pipeline.py           # End-to-end orchestration
-```
-
-## Pipeline Steps
-
-### 1. Data Generation
-
-Generate synthetic historical cases for testing:
-
-```python
-from scripts.generate_synthetic_data import generate_synthetic_dataset
-
-cases = generate_synthetic_dataset(num_cases=10)
-```
-
-Each case includes:
-- Seed event (what happened)
-- Outcome chain (sequence of consequences)
-- Dates and timeframes
-
-### 2. SFT Training (Phase 1)
-
-Supervised fine-tuning with LoRA rank 64:
-
-```bash
-modal run training/modal_sft.py
-```
-
-**Configuration:**
-- LoRA Rank: 64 (higher for learning)
-- GPU: A100 40GB
-- Learning Rate: 3e-4 (10x higher than full FT)
-- Duration: ~2-3 hours
-- Cost: ~$6-9
-
-**Expected improvement:**
-- Before: Perplexity ~8.5
-- After: Perplexity ~2.8
-
-### 3. GRPO Training (Phase 2)
-
-Group Relative Policy Optimization with ultra-low rank:
-
-```bash
-modal run training/modal_grpo.py
-```
-
-**Configuration:**
-- LoRA Rank: 4 (RL needs minimal capacity!)
-- GPU: A10G 24GB (cheaper!)
-- Learning Rate: 5e-4
-- Duration: ~3-4 hours
-- Cost: ~$2-3
-
-**Expected improvement:**
-- Before GRPO: Perplexity ~2.8
-- After GRPO: Perplexity ~1.9
-
-### 4. Evaluation
-
-Evaluate all models with match coverage tracking:
-
-```python
-from evaluation.evaluator import TreeEvaluator, print_metrics
-from inference import ProbabilityTreeInference
-
-# Initialize
-inference = ProbabilityTreeInference()
-evaluator = TreeEvaluator()
-
-# Load adapter
-inference.load_adapter("/path/to/checkpoint", "my-model")
-
-# Generate tree
-tree = inference.generate_tree("Brexit vote passes", "52% leave")
-
-# Evaluate
-metrics = evaluator.evaluate(tree, ground_truth)
-print_metrics(metrics)
-```
-
-**Metrics tracked:**
-- Loss & Perplexity
-- Brier score
-- Match coverage (exact/semantic/LLM/none)
-- Per-depth breakdown
-
-### 5. Hot-Swapping Models
-
-Compare baseline vs trained models:
-
-```python
-from inference import ProbabilityTreeInference
-
-inference = ProbabilityTreeInference()
-
-# Baseline
-inference.load_adapter(None)
-baseline_tree = inference.generate_tree(seed_event, context)
-
-# SFT
-inference.load_adapter("/data/models/sft/final", "sft")
-sft_tree = inference.generate_tree(seed_event, context)
-
-# GRPO
-inference.load_adapter("/data/models/grpo/final", "grpo")
-grpo_tree = inference.generate_tree(seed_event, context)
-```
-
-## Data Format
-
-### Input: Historical Case
-
+**Training Data Format:**
 ```json
 {
-  "case_id": "brexit_2016",
-  "seed_event": "Brexit vote passes",
-  "seed_date": "2016-06-23",
-  "context": "52% leave, 48% remain",
-  "domain": "Geopolitics",
-  "outcome_chain": [
-    {
-      "depth": 1,
-      "event": "Article 50 triggered",
-      "date": "2017-03-29",
-      "timeframe_months": 9
-    },
-    {
-      "depth": 2,
-      "event": "Theresa May resigns",
-      "date": "2019-07-24",
-      "timeframe_months": 28
-    }
-  ]
+  "seed": {"event": "Tech layoffs", "date": "2023-01-15"},
+  "levels": [{
+    "depth": 1,
+    "candidates": [
+      {"event": "Stock drops 15%", "label": 1},  // Actual
+      {"event": "IPO delayed", "label": 0},      // Alternative
+      {"event": "Partnership announced", "label": 0}
+    ]
+  }]
 }
 ```
 
-### Output: Probability Tree
+**Model learns:** Assign probability 1.0 to actual (label=1), 0.0 to alternatives (label=0)
 
-```json
-{
-  "event": "Brexit vote passes",
-  "probability": 1.0,
-  "children": [
-    {
-      "event": "Article 50 triggered",
-      "probability": 0.65,
-      "children": [
-        {
-          "event": "Theresa May resigns",
-          "probability": 0.40,
-          "children": []
-        }
-      ]
-    }
-  ]
-}
+## Working Configuration (Proven)
+
+**Package Versions:**
+- torch >= 2.8.0 (has torch.int1 for torchao)
+- trl == 0.23.1
+- transformers >= 4.51.3, <= 4.57.2
+- unsloth (latest from git)
+- GPU: A10G (14GB VRAM sufficient)
+
+## Training Results
+
+**Latest Run (Rank 64):**
 ```
+Cases: 30 with candidate sets
+Trainable params: 31.8M (0.15% of 21B)
+Duration: 335 seconds (~5.6 minutes)
+Loss: 3.136
+✅ Saved to: /data/models/sft/final
+```
+
+**Cost:** ~$0.05 per run on A10G
+
+## Next Steps
+
+1. Build Brainstormer agent (generate 100 seed events from 2018-2022)
+2. Build Chronicler agent (find what actually happened)
+3. Train on real historical data
+4. Evaluate vs baseline
 
 ## Modal Setup
 

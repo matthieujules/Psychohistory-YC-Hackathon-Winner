@@ -18,7 +18,7 @@ def upload_test_data(data_content: str):
     """Upload synthetic data to volume"""
 
     # Write to volume
-    volume_path = "/data/synthetic_cases.jsonl"
+    volume_path = "/data/historical_cases.jsonl"
     with open(volume_path, 'w') as f:
         f.write(data_content)
 
@@ -67,7 +67,7 @@ def read_volume_data():
     """Read data from volume to verify"""
     import json
 
-    volume_path = "/data/synthetic_cases.jsonl"
+    volume_path = "/data/historical_cases.jsonl"
 
     try:
         cases = []
@@ -94,7 +94,7 @@ def main():
     print("🧪 Testing Modal Volume Operations\n")
 
     # Read local data
-    local_path = "training/data/synthetic_cases.jsonl"
+    local_path = "training/data/historical_cases.jsonl"
     print(f"Reading local file: {local_path}")
 
     with open(local_path) as f:
@@ -103,7 +103,7 @@ def main():
     print(f"✅ Read {len(data_content)} bytes\n")
 
     # Step 1: Upload data
-    print("Step 1: Uploading synthetic data...")
+    print("Step 1: Uploading historical cases data...")
     result = upload_test_data.remote(data_content)
     print(f"Result: {result}\n")
 

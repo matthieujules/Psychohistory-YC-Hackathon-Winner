@@ -49,10 +49,11 @@ image = (
     timeout=7200,  # 2 hours
     volumes={"/data": volume},
     secrets=[modal.Secret.from_name("huggingface-secret")],
+    mounts=[modal.Mount.from_local_dir("training/data", remote_path="/training_data")],
 )
 def train_sft_impl(
     model_name: str = "unsloth/gpt-oss-20b",  # ✅ Use Unsloth's optimized variant!
-    data_path: str = "/data/synthetic_cases.jsonl",
+    data_path: str = "/training_data/historical_cases.jsonl",  # Mounted from local
     output_dir: str = "/data/models/sft",
     lora_rank: int = 64,
     learning_rate: float = 3e-4,
@@ -154,43 +155,45 @@ def train_sft_impl(
     # Format training examples
     def format_example(case):
         """
-        Format case into training prompt/completion
+        Format case with candidate sets into training example
 
-        Input: Seed event + context
-        Output: JSON array of outcomes with probabilities
+        For each depth level, model learns to assign probability 1.0 to actual outcome,
+        0.0 to alternatives. This teaches proper probability distribution.
         """
-        # Build prompt
-        prompt = f"""Given this historical event:
+        training_texts = []
 
-Event: {case['seed_event']}
-Date: {case['seed_date']}
-Context: {case['context']}
+        for level in case['levels']:
+            # Build prompt for this depth level
+            prompt = f"""Event: {case['seed']['event']}
+Date: {case['seed']['date']}
+Context: {case['seed']['context']}
+Depth: {level['depth']}
+Timeframe: next {level['timeframe_months']} months
 
-Predict the most likely outcomes over the next 12-24 months. For each outcome, provide:
-- event: A specific, concrete event description
-- probability: Likelihood (all probabilities should sum to 1.0)
-- timeframe_months: Expected time until this event occurs
+Research summary:
+{level['research_summary']}
 
-Output a JSON array of outcomes, ordered by probability (highest first).
+Candidate outcomes:
+"""
+            # List candidates
+            for i, cand in enumerate(level['candidates']):
+                prompt += f"{i+1}. {cand['event']}\n"
 
-Outcomes:"""
+            prompt += "\nAssign probability to each candidate (must sum to 1.0). Return JSON:"
 
-        # Build ground truth completion (what actually happened)
-        # Format: simplified to just show the events that occurred
-        outcomes = []
-        for outcome in case['outcome_chain']:
-            outcomes.append({
-                "event": outcome['event'],
-                "probability": 1.0 / len(case['outcome_chain']),  # Simplified: uniform
-                "timeframe_months": outcome['timeframe_months']
-            })
+            # Build target distribution (1.0 for actual, 0.0 for alternatives)
+            prob_map = {}
+            for cand in level['candidates']:
+                prob_map[cand['event']] = 1.0 if cand['label'] == 1 else 0.0
 
-        completion = json.dumps(outcomes, indent=2)
+            completion = json.dumps(prob_map, indent=2)
 
-        # Concatenate for causal LM training
-        full_text = prompt + "\n" + completion + tokenizer.eos_token
+            # Concatenate
+            full_text = prompt + "\n" + completion + tokenizer.eos_token
+            training_texts.append(full_text)
 
-        return {"text": full_text}
+        # Join all depth levels for this case
+        return {"text": "\n\n".join(training_texts)}
 
     formatted_data = [format_example(case) for case in cases]
 
@@ -254,7 +257,7 @@ Outcomes:"""
     image=image,
     volumes={"/data": volume},
 )
-def prepare_data(local_data_path: str = "training/data/synthetic_cases.jsonl"):
+def prepare_data(local_data_path: str = "training/data/historical_cases.jsonl"):
     """
     Upload local training data to Modal volume
 
