@@ -118,6 +118,19 @@ src/
 └── types/                 # TypeScript definitions
 ```
 
+## Learning Pipeline
+
+PsychoHistory trains its probability tree generator on historical case studies to calibrate likelihoods and improve coverage of real-world outcomes.
+
+- **Data Factory**: Utilities in `training/` synthesize and curate JSONL records (`seed_event` → ordered `outcome_chain`) that mirror multi-depth tree expansions across geopolitics, policy, and economics.
+- **Training Stages**:
+  1. **Supervised Fine-Tuning (LoRA rank 64)** pushes the model to assign higher probability to the events that actually unfolded, pulling perplexity down quickly.
+  2. **Group Relative Policy Optimization (LoRA rank 4)** samples several trees per seed and rewards calibrated probabilities, coherent branching, and diverse-but-plausible paths through a composite score.
+- **Evaluation**: Each checkpoint is scored on loss, perplexity, match coverage (exact/semantic/LLM matches), and Brier score per depth. Automated checks flag regressions when match coverage drops below 80%.
+- **Hot-Swappable Inference**: The serving layer can load baseline weights or LoRA adapters on demand, enabling side-by-side comparisons of baseline, SFT, and GRPO models inside the web UI.
+
+See `TRAINING_PIPELINE.md` for flow diagrams, Modal deployment details, and full metric definitions.
+
 ### Core Algorithms
 
 #### 1. Tree Generation
