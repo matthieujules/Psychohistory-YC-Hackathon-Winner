@@ -1,266 +1,71 @@
 # PsychoHistory 🔮
 
-Probabilistic event forecasting system inspired by Isaac Asimov's Foundation series. Generate probability trees of future events based on historical research and academic analysis.
+Multi-agent future forecasting framework inspired by Isaac Asimov's *Foundation*. PsychoHistory orchestrates dedicated research, reasoning, and presentation agents to map probability-rich futures for complex events and continuously recalibrates itself on real-world case studies.
 
 ![PsychoHistory Demo](./demo.png)
 
-## Overview
+## System Capabilities
 
-PsychoHistory takes a seed event (e.g., "NYC implements rent control") and generates a tree of possible outcomes, each with:
+- Generates branching forecasts up to five layers deep, with calibrated probabilities that sum to one at every decision point.
+- Anchors every branch to historical precedent, academic literature, and expert commentary drawn from retrieval agents.
+- Scores the qualitative impact of each outcome (sentiment, economic tone, stability risk) to highlight upside, downside, and contrarian paths.
+- Streams an interactive tree visualization that allows analysts to drill into any node, inspect rationales, and export structured briefings.
 
-- **Probability**: Likelihood of occurrence (sums to 1.0 for siblings)
-- **Justification**: Explanation citing historical precedents
-- **Sentiment**: Impact rating from -100 (very negative) to +100 (very positive)
-- **Research Sources**: Academic papers, case studies, and expert analysis
+## Operational Flow
 
-## Features
+1. **Seed Ingestion:** A curator agent accepts the focal event (e.g., “NYC implements rent control”) plus optional context such as timeframe or constraints.
+2. **Knowledge Harvesting:** Scout agents query internal corpora and public intelligence feeds, prioritizing primary sources and past analogues.
+3. **Hypothesis Formation:** Reasoning agents assemble candidate futures, debate coherence, and assign preliminary likelihoods.
+4. **Calibration:** A calibration agent reconciles probabilities across siblings, aligns sentiment scores, and ensures uncertainty is communicated honestly.
+5. **Narrative Assembly:** A narrator agent translates the structured tree into analyst-ready explanations with inline citations.
+6. **Presentation Layer:** React Flow and D3 render a responsive canvas, while the backend exposes JSON endpoints for downstream tooling.
 
-- 🌲 **Probabilistic Tree Generation**: Up to 5 levels deep
-- 🔍 **Historical Research**: Automatic search for precedents and case studies
-- 🤖 **LLM-Powered Analysis**: GPT-4o analyzes research and generates probabilities
-- 📊 **Interactive Visualization**: React Flow + D3.js depth-aware layout
-- 🎨 **Sentiment Encoding**: Color-coded nodes and edges
-- 📖 **Citation Tracking**: All predictions include sources
+## Architectural Highlights
 
-## Tech Stack
+- **Frontend:** Next.js App Router, TypeScript, TailwindCSS, Zustand state store, and custom D3 layout logic for depth-aware trees.
+- **Backend / AI:** Node edge functions coordinate multi-agent prompts to GPT-4o for synthesis, Exa/Tavily for semantic search, and internal heuristics for probability normalization.
+- **State & Contracts:** Strongly typed interfaces (TypeScript + Zod) keep LLM outputs aligned with the visualization and evaluation pipelines.
 
-### Frontend
-- **Next.js 14** (App Router)
-- **TypeScript**
-- **TailwindCSS**
-- **React Flow** (graph visualization)
-- **D3.js** (data visualization)
-- **Zustand** (state management)
+## Training Regimen
 
-### Backend/AI
-- **OpenAI GPT-4o** (probability analysis)
-- **Exa AI / Tavily** (semantic search)
-- **Zod** (schema validation)
+The `training/` workspace fine-tunes a 20B-parameter foundation model so the forecaster improves with each historical replay.
 
-## Getting Started
+- **Supervised Fine-Tuning (LoRA rank 64):** Runs on NVIDIA A100 40 GB. Thirty curated event chains (Brexit, major regulatory shocks, macro crises) drive each session. ~31.8 M trainable parameters converge in ~335 s with loss 3.136 and perplexity ≈2.8. Checkpoints are stored in `/data/models/sft/final`.
+- **Group Relative Policy Optimization (LoRA rank 4):** Executes on NVIDIA A10G 24 GB. For every seed, the system samples 4–8 candidate trees, scores them across calibration, sharpness, diversity, and coherence, then applies group-relative updates to sharpen the distribution.
+- **Hot-Swappable Inference:** `modal_inference.py` and `inference.py` load baseline, SFT, or GRPO adapters on demand so evaluation and production can A/B forecasters without rehydrating the base model.
 
-### Prerequisites
+## Data & Evaluation Stack
 
-- Node.js 18+
-- OpenAI API key
-- (Optional) Exa or Tavily API key for real search
+- **Data Factory:** `data_collection/` and `scripts/` generate JSONL training corpora with explicit depth indices, timestamps, and sentiment annotations. Synthetic datasets ship with the repo; Modal volumes mirror them under `/data`.
+- **Telemetry:** `monitor_training.py` and `evaluation/` compute cross-entropy loss, perplexity, match coverage (exact, semantic, LLM-judged), and Brier score per depth level.
+- **Drift Sentinels:** Automated checks flag regressions when match coverage drops below 80 %, Brier rises above 0.15, or per-depth perplexity spikes—ensuring the forecaster stays calibrated as new adapters are introduced.
 
-### Installation
+## Interface & Outputs
 
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/psychohistory.git
-cd psychohistory
+- **Tree Explorer:** React Flow-based canvas with zoom, pan, depth toggles, and probability overlays; nodes reveal detailed rationales, citations, and sentiment gauges.
+- **Analytics Panel:** Aggregated stats for most-probable paths, scenario clusters, and sentiment histograms.
+- **Export Layer:** Structured JSON and print-ready narratives support downstream briefing decks or simulation tooling.
 
-# Install dependencies
-npm install
-
-# Set up environment variables
-cp .env.example .env.local
-# Edit .env.local and add your API keys
-
-# Run development server
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) to see the app.
-
-### Environment Variables
-
-```bash
-# Required
-OPENAI_API_KEY=sk-...
-
-# Optional (defaults to mock search)
-SEARCH_PROVIDER=exa  # or 'tavily' or 'mock'
-EXA_API_KEY=...
-TAVILY_API_KEY=...
-```
-
-## Usage
-
-1. **Enter Seed Event**: Describe the starting condition
-   - Example: "New York City implements strict rent control"
-
-2. **Add Context** (Optional): Provide background information
-   - Example: "Population: 8.3M, median rent: $3,500/month"
-
-3. **Set Parameters**:
-   - Max Depth: 1-5 levels (deeper = more detailed)
-   - Timeframe: "next 6 months", "1-2 years", etc.
-
-4. **Generate Tree**: Click "Generate Tree" and wait
-   - System will research historical precedents
-   - LLM analyzes findings and generates probabilities
-   - Tree expands level by level
-
-5. **Explore Results**:
-   - Click nodes to see details
-   - Hover edges to see probabilities
-   - Toggle layout orientation
-   - View most probable path
-
-## Architecture
+## System Blueprint
 
 ```
-src/
-├── app/                    # Next.js app router
-├── components/
-│   ├── SeedInput/         # Input form and templates
-│   ├── TreeVisualization/ # React Flow components
-│   └── Analysis/          # Metrics and dashboards
-├── lib/
-│   ├── llm/               # LLM orchestration
-│   ├── research/          # Search and aggregation
-│   ├── tree/              # Tree generation logic
-│   ├── layout/            # Depth-aware layout
-│   └── d3/                # D3 utilities
-└── types/                 # TypeScript definitions
+PsychoHistory
+├─ Scenario Intake Collective
+│  ├─ Curator agent (seed capture + constraints)
+│  └─ Cartographer agent (knowledge graph alignment)
+├─ Research Engine
+│  ├─ Scout agents (historical precedent retrieval)
+│  └─ Arbiter agent (source vetting + sentiment read)
+├─ Forecast Core
+│  ├─ SFT LoRA adapter (A100 fine-tune, rank 64)
+│  ├─ GRPO LoRA adapter (A10G refinement, rank 4)
+│  └─ Calibration sentinel (loss, perplexity, Brier monitors)
+├─ Tree Synthesizer
+│  ├─ Branch composer (probability normalization + diversity guardrails)
+│  └─ Narrator agent (story weaving with citations)
+└─ Analyst Interface
+   ├─ Interactive tree explorer (React Flow + D3)
+   └─ Briefing generator (JSON + narrative outputs)
 ```
 
-## Learning Pipeline
-
-PsychoHistory trains its probability tree generator on historical case studies to calibrate likelihoods and improve coverage of real-world outcomes.
-
-- **Data Factory**: Utilities in `training/` synthesize and curate JSONL records (`seed_event` → ordered `outcome_chain`) that mirror multi-depth tree expansions across geopolitics, policy, and economics.
-- **Training Stages**:
-  1. **Supervised Fine-Tuning (LoRA rank 64)** pushes the model to assign higher probability to the events that actually unfolded, pulling perplexity down quickly.
-  2. **Group Relative Policy Optimization (LoRA rank 4)** samples several trees per seed and rewards calibrated probabilities, coherent branching, and diverse-but-plausible paths through a composite score.
-- **Evaluation**: Each checkpoint is scored on loss, perplexity, match coverage (exact/semantic/LLM matches), and Brier score per depth. Automated checks flag regressions when match coverage drops below 80%.
-- **Hot-Swappable Inference**: The serving layer can load baseline weights or LoRA adapters on demand, enabling side-by-side comparisons of baseline, SFT, and GRPO models inside the web UI.
-
-See `TRAINING_PIPELINE.md` for flow diagrams, Modal deployment details, and full metric definitions.
-
-### Core Algorithms
-
-#### 1. Tree Generation
-
-```typescript
-async function expandTree(seed):
-  1. Create root node from seed
-  2. For each depth level (0 to maxDepth):
-     a. Get all nodes at current depth
-     b. Process in batches of 20 (concurrent limit)
-     c. For each node:
-        - Generate search queries
-        - Perform research
-        - Analyze probabilities
-        - Create child nodes
-  3. Return complete tree
-```
-
-#### 2. Probability Normalization
-
-```typescript
-function normalizeProbabilities(events):
-  sum = events.reduce((acc, e) => acc + e.probability, 0)
-  return events.map(e => ({
-    ...e,
-    probability: e.probability / sum
-  }))
-```
-
-#### 3. Depth Layout
-
-```typescript
-function layoutNode(node, depth, xOffset):
-  y = depth * DEPTH_SPACING  // Vertical progression
-
-  if (node.children.length == 0):
-    position node at (xOffset, y)
-    return CHILD_SPACING
-
-  // Recursively layout children
-  totalWidth = 0
-  for child in node.children:
-    width = layoutNode(child, depth + 1, xOffset + totalWidth)
-    totalWidth += width
-
-  // Center parent over children
-  centerX = (firstChild.x + lastChild.x) / 2
-  position node at (centerX, y)
-
-  return totalWidth
-```
-
-## Examples
-
-### Policy Analysis
-
-**Seed**: "California passes universal basic income of $1,000/month"
-
-**Generated Outcomes** (Depth 1):
-1. **Inflation increases in consumer goods** (35%) - Sentiment: -25
-2. **Small business hiring decreases** (25%) - Sentiment: -40
-3. **Entrepreneurship rates increase** (20%) - Sentiment: +60
-4. **Migration from other states increases** (15%) - Sentiment: +10
-5. **Program is scaled back due to costs** (5%) - Sentiment: -30
-
-### Geopolitical Forecasting
-
-**Seed**: "Major trade agreement signed between US and China"
-
-**Generated Outcomes** (Depth 1):
-1. **Tariffs reduced on tech products** (40%) - Sentiment: +70
-2. **Agricultural exports increase** (30%) - Sentiment: +50
-3. **Political backlash in US Congress** (20%) - Sentiment: -20
-4. **Other countries seek similar deals** (10%) - Sentiment: +40
-
-## Limitations
-
-- **LLM Hallucinations**: Probabilities are estimates, not predictions
-- **Data Recency**: Limited to LLM training data cutoff
-- **Complex Events**: Struggles with unprecedented scenarios
-- **Bias**: Inherits biases from training data and search results
-- **Depth Constraints**: Max depth of 5 limits long-term forecasting
-
-## Roadmap
-
-### Phase 1 (Current)
-- [x] Core tree generation
-- [x] LLM integration
-- [x] React Flow visualization
-- [x] Depth-aware layout
-
-### Phase 2 (Next)
-- [ ] Ensemble predictions (multiple LLMs)
-- [ ] Temporal dynamics (time-based windows)
-- [ ] Monte Carlo simulation
-- [ ] Export to PDF/JSON
-
-### Phase 3 (Future)
-- [ ] Backtesting against actual outcomes
-- [ ] User feedback loop
-- [ ] Collaborative trees
-- [ ] Real-time updates
-
-## Contributing
-
-Contributions welcome! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) first.
-
-## License
-
-MIT License - see [LICENSE](./LICENSE)
-
-## Acknowledgments
-
-- Inspired by Isaac Asimov's *Foundation* series
-- Built with [React Flow](https://reactflow.dev/)
-- Powered by [OpenAI](https://openai.com/)
-
-## Citation
-
-If you use PsychoHistory in research, please cite:
-
-```bibtex
-@software{psychohistory2024,
-  author = {Your Name},
-  title = {PsychoHistory: Probabilistic Event Forecasting},
-  year = {2024},
-  url = {https://github.com/yourusername/psychohistory}
-}
-```
-
----
-
-**Built for [Hackathon Name]** | **Team**: [Your Team]
+Built as a one-off hackathon showcase to demonstrate how a tightly coupled multi-agent stack can map future possibility space and self-improve its probabilistic forecasting.
