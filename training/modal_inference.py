@@ -68,7 +68,7 @@ def test_inference():
 
     print("✅ Model loaded with trained adapter!\n")
 
-    # Test prompt - exactly like training format but with stronger JSON enforcement
+    # Test prompt - exactly like training format with emphasis on non-uniform distribution
     test_prompt = """Initial Event: U.S. Federal Reserve raises interest rates by 0.75%
 Path so far: U.S. Federal Reserve raises interest rates by 0.75%
 Current Event: U.S. Federal Reserve raises interest rates by 0.75%
@@ -82,11 +82,14 @@ Predict 1-5 possible next events following from the current situation.
 
 Requirements:
 - Probabilities sum to 1.0
+- Use NON-UNIFORM probabilities (e.g., 0.42, 0.28, 0.18, 0.12 - NOT 0.25, 0.25, 0.25)
+- Assign higher probabilities to more likely outcomes based on research evidence
+- DO NOT use uniform or overly rounded probabilities (avoid 0.2, 0.3, 0.5 patterns)
+- Example good distribution: [0.38, 0.31, 0.19, 0.12] - varied and realistic
 - Specific, measurable outcomes
-- Base predictions on research evidence
 
 Output JSON only:
-[{"event": "...", "probability": 0.3}]
+[{"event": "...", "probability": 0.38}]
 
 """
 
